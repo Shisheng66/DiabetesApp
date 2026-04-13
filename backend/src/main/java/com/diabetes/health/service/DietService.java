@@ -11,6 +11,8 @@ import com.diabetes.health.repository.FoodNutritionRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -124,30 +126,24 @@ public class DietService {
 
     public DietDto.PageResult<DietDto.FoodItemResponse> searchFoods(CurrentUser user, String keyword, int page, int size) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        List<FoodNutrition> sharedFoods = foodNutritionRepository.findByUserIdIsNullAndNameContainingIgnoreCase(normalizedKeyword);
-        List<FoodNutrition> customFoods = foodNutritionRepository.findByUserIdAndNameContainingIgnoreCase(user.getId(), normalizedKeyword);
-
-        List<FoodNutrition> allFoods = new ArrayList<>();
-        allFoods.addAll(customFoods);
-        allFoods.addAll(sharedFoods);
-        allFoods.sort(Comparator
-                .comparing((FoodNutrition food) -> !Boolean.TRUE.equals(food.getCustomFood()))
-                .thenComparing(FoodNutrition::getCategory, Comparator.nullsLast(String::compareToIgnoreCase))
-                .thenComparing(FoodNutrition::getName, String::compareToIgnoreCase));
-
         int safeSize = Math.max(size, 1);
-        int from = Math.min(page * safeSize, allFoods.size());
-        int to = Math.min(from + safeSize, allFoods.size());
-        List<DietDto.FoodItemResponse> content = allFoods.subList(from, to).stream()
+        int safePage = Math.max(page, 0);
+        Page<FoodNutrition> foodPage = foodNutritionRepository.searchAccessibleFoods(
+                user.getId(),
+                normalizedKeyword,
+                PageRequest.of(safePage, safeSize)
+        );
+
+        List<DietDto.FoodItemResponse> content = foodPage.getContent().stream()
                 .map(DietDto.FoodItemResponse::from)
                 .toList();
 
         DietDto.PageResult<DietDto.FoodItemResponse> result = new DietDto.PageResult<>();
         result.setContent(content);
-        result.setPage(page);
+        result.setPage(foodPage.getNumber());
         result.setSize(safeSize);
-        result.setTotalElements(allFoods.size());
-        result.setTotalPages((int) Math.ceil(allFoods.size() / (double) safeSize));
+        result.setTotalElements(foodPage.getTotalElements());
+        result.setTotalPages(foodPage.getTotalPages());
         return result;
     }
 
@@ -195,7 +191,9 @@ public class DietService {
         DietDto.DailySummaryResponse summary = getDailySummary(user, date);
         UserHealthProfile profile = userHealthProfileRepository.findByUserId(user.getId()).orElse(null);
 
-        List<FoodNutrition> candidateFoods = new ArrayList<>(foodNutritionRepository.findByUserIdIsNullAndNameContainingIgnoreCase(""));
+        List<FoodNutrition> candidateFoods = new ArrayList<>(
+                foodNutritionRepository.searchAccessibleFoods(user.getId(), "", PageRequest.of(0, 200)).getContent()
+        );
         candidateFoods.sort(Comparator
                 .comparing(FoodNutrition::getGi, Comparator.nullsLast(BigDecimal::compareTo))
                 .thenComparing(FoodNutrition::getProteinGPer100g, Comparator.nullsLast(Comparator.reverseOrder())));

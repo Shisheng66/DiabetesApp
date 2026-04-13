@@ -118,7 +118,7 @@ public class ExerciseService {
     public ExerciseDto.DailyRecommendationResponse getDailyRecommendation(CurrentUser user, LocalDate date) {
         BigDecimal intake = sum(dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), date)
                 .stream()
-                .map(DietRecord::getCalorieKcal)
+                .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
                 .toList());
 
         ZoneId zone = ZoneId.systemDefault();
@@ -126,7 +126,7 @@ public class ExerciseService {
         Instant end = date.plusDays(1).atStartOfDay(zone).toInstant();
         BigDecimal burned = sum(exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end)
                 .stream()
-                .map(ExerciseRecord::getCalorieKcal)
+                .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
                 .toList());
 
         BigDecimal weight = resolveUserWeight(user.getId());

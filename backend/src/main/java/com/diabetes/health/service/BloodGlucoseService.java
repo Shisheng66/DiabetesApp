@@ -42,14 +42,26 @@ public class BloodGlucoseService {
                 ? BloodGlucoseRecord.RecordSource.BLE : BloodGlucoseRecord.RecordSource.MANUAL;
 
         UserHealthProfile profile = healthProfileRepository.findByUserId(user.getId()).orElse(null);
-        BigDecimal targetMin = profile != null ? profile.getTargetFbgMin() : null;
-        BigDecimal targetMax = profile != null ? profile.getTargetFbgMax() : null;
-        if (measureType == BloodGlucoseRecord.MeasureType.POST_MEAL && profile != null) {
-            targetMin = profile.getTargetPbgMin();
-            targetMax = profile.getTargetPbgMax();
+        BigDecimal targetMin = defaultTargetMin(measureType);
+        BigDecimal targetMax = defaultTargetMax(measureType);
+
+        if (profile != null) {
+            if (measureType == BloodGlucoseRecord.MeasureType.POST_MEAL) {
+                if (profile.getTargetPbgMin() != null) {
+                    targetMin = profile.getTargetPbgMin();
+                }
+                if (profile.getTargetPbgMax() != null) {
+                    targetMax = profile.getTargetPbgMax();
+                }
+            } else {
+                if (profile.getTargetFbgMin() != null) {
+                    targetMin = profile.getTargetFbgMin();
+                }
+                if (profile.getTargetFbgMax() != null) {
+                    targetMax = profile.getTargetFbgMax();
+                }
+            }
         }
-        if (targetMin == null) targetMin = new BigDecimal("3.9");
-        if (targetMax == null) targetMax = new BigDecimal("6.1");
 
         BloodGlucoseRecord.AbnormalFlag abnormalFlag = BloodGlucoseRecord.AbnormalFlag.NORMAL;
         if (req.getValueMmolL().compareTo(targetMax) > 0) {
@@ -91,7 +103,7 @@ public class BloodGlucoseService {
         if (startDate != null && endDate != null) {
             Instant start = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-            List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetween(user.getId(), start, end);
+            List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
             BloodGlucoseRecord.MeasureType typeFilterVal = null;
             if (measureType != null && !measureType.isBlank()) {
                 try {
@@ -153,7 +165,7 @@ public class BloodGlucoseService {
     public BloodGlucoseDto.TrendResponse trendDaily(CurrentUser user, LocalDate date) {
         Instant start = date.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetween(user.getId(), start, end);
+        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
@@ -170,7 +182,7 @@ public class BloodGlucoseService {
     public BloodGlucoseDto.TrendResponse trendWeekly(CurrentUser user, LocalDate weekStart) {
         Instant start = weekStart.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = weekStart.plusWeeks(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetween(user.getId(), start, end);
+        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
@@ -189,7 +201,7 @@ public class BloodGlucoseService {
         LocalDate endDate = startDate.plusMonths(1);
         Instant start = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = endDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetween(user.getId(), start, end);
+        List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
@@ -201,5 +213,19 @@ public class BloodGlucoseService {
         res.setPeriodType("monthly");
         res.setPoints(points);
         return res;
+    }
+
+    private BigDecimal defaultTargetMin(BloodGlucoseRecord.MeasureType measureType) {
+        if (measureType == BloodGlucoseRecord.MeasureType.POST_MEAL) {
+            return new BigDecimal("4.4");
+        }
+        return new BigDecimal("3.9");
+    }
+
+    private BigDecimal defaultTargetMax(BloodGlucoseRecord.MeasureType measureType) {
+        if (measureType == BloodGlucoseRecord.MeasureType.POST_MEAL) {
+            return new BigDecimal("7.8");
+        }
+        return new BigDecimal("6.1");
     }
 }

@@ -5,9 +5,9 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:mysql://localhost:3306/diabetes_health?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
-    username: root
-    password: 1234
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:diabetes_health}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       # 连接池配置
@@ -36,5 +36,5 @@ logging:
 
 app:
   jwt:
-    secret: dev-secret-key-change-this-to-a-strong-value-at-least-32chars
+    secret: ${JWT_SECRET:dev-only-secret-please-change-32chars}
     expiration-seconds: 604800  # 7 days

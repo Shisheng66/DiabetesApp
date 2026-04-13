@@ -10,7 +10,13 @@ import java.time.Instant;
  * 血糖记录表
  */
 @Entity
-@Table(name = "blood_glucose_record")
+@Table(
+        name = "blood_glucose_record",
+        indexes = {
+                @Index(name = "idx_bg_user_measure_time", columnList = "user_id, measure_time"),
+                @Index(name = "idx_bg_user_measure_type", columnList = "user_id, measure_type")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

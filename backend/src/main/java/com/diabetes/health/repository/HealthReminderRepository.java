@@ -8,4 +8,6 @@ import java.util.List;
 public interface HealthReminderRepository extends JpaRepository<HealthReminder, Long> {
 
     List<HealthReminder> findByUserIdOrderByTimeOfDayAsc(Long userId);
+
+    List<HealthReminder> findByUserIdAndEnabledTrueOrderByTimeOfDayAsc(Long userId);
 }

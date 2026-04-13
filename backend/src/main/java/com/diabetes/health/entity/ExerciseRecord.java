@@ -10,7 +10,13 @@ import java.time.Instant;
  * 运动记录表
  */
 @Entity
-@Table(name = "exercise_record")
+@Table(
+        name = "exercise_record",
+        indexes = {
+                @Index(name = "idx_exercise_user_start_time", columnList = "user_id, start_time"),
+                @Index(name = "idx_exercise_user_type", columnList = "user_id, exercise_type_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

@@ -31,8 +31,8 @@ public class ReminderController {
     }
 
     @GetMapping("/api/reminders")
-    public List<ReminderDto.ReminderResponse> list(@AuthenticationPrincipal CurrentUser user) {
-        return reminderService.list(user);
+    public ReminderDto.ListResponse list(@AuthenticationPrincipal CurrentUser user) {
+        return ReminderDto.ListResponse.of(reminderService.list(user));
     }
 
     @PutMapping("/api/reminders/{id}")

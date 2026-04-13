@@ -10,7 +10,13 @@ import java.time.LocalTime;
  * 健康提醒计划表
  */
 @Entity
-@Table(name = "health_reminder")
+@Table(
+        name = "health_reminder",
+        indexes = {
+                @Index(name = "idx_reminder_user_time", columnList = "user_id, time_of_day"),
+                @Index(name = "idx_reminder_user_enabled", columnList = "user_id, enabled")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

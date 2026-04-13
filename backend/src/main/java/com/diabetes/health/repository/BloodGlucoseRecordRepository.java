@@ -14,8 +14,8 @@ public interface BloodGlucoseRecordRepository extends JpaRepository<BloodGlucose
 
     Page<BloodGlucoseRecord> findByUserIdOrderByMeasureTimeDesc(Long userId, Pageable pageable);
 
-    @Query("SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime")
-    List<BloodGlucoseRecord> findByUserIdAndMeasureTimeBetween(
+    @Query("SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC")
+    List<BloodGlucoseRecord> findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(
             @Param("userId") Long userId,
             @Param("start") Instant start,
             @Param("end") Instant end

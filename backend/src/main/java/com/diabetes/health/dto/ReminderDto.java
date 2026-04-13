@@ -52,6 +52,19 @@ public class ReminderDto {
     }
 
     @Data
+    public static class ListResponse {
+        private int code;
+        private List<ReminderResponse> data;
+
+        public static ListResponse of(List<ReminderResponse> reminders) {
+            ListResponse response = new ListResponse();
+            response.setCode(200);
+            response.setData(reminders);
+            return response;
+        }
+    }
+
+    @Data
     public static class RegisterPushRequest {
         private String deviceType;  // ANDROID, IOS
         @NotNull(message = "pushToken 不能为空")

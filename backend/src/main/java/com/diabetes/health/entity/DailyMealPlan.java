@@ -11,7 +11,13 @@ import java.time.LocalDate;
  * User defined daily meal plan entry.
  */
 @Entity
-@Table(name = "daily_meal_plan")
+@Table(
+        name = "daily_meal_plan",
+        indexes = {
+                @Index(name = "idx_meal_plan_user_date", columnList = "user_id, plan_date"),
+                @Index(name = "idx_meal_plan_user_type", columnList = "user_id, meal_type")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

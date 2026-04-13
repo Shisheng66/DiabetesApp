@@ -1,14 +1,14 @@
 spring:
+  profiles:
+    default: dev
   datasource:
-    url: jdbc:mysql://localhost:3306/diabetes_health?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
-    # 用户名：填 MySQL 登录名（如 root），不是主机名或 localhost:3306
-    username: root
-    # 密码：填该用户对应的 MySQL 登录密码
-    password: 1234
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:diabetes_health}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     database-platform: org.hibernate.dialect.MySQLDialect
     properties:
       hibernate:
@@ -21,7 +21,6 @@ server:
 
 app:
   jwt:
-    # 至少 32 字符，用于 HS256 签名
-    secret: change-this-secret-to-a-strong-value-at-least-32chars
+    # 生产环境请通过环境变量注入 JWT_SECRET
+    secret: ${JWT_SECRET}
     expiration-seconds: 604800 # 7 days
-

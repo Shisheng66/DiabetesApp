@@ -11,6 +11,8 @@ class ApiService {
   static String? _token;
   static String? _resolvedApiBase;
   static Future<String>? _resolvingApiBaseFuture;
+  static DateTime? _lastSubnetScanAt;
+  static const Duration _subnetScanCooldown = Duration(minutes: 5);
 
   /// Call after backend/network changes to force rediscovery.
   static void clearResolvedApiBase() {
@@ -148,20 +150,28 @@ class ApiService {
       await ServerUrlPrefs.setBaseUrlOverride(null);
     }
 
-    final scanRound = _expandSubnetCandidates(firstRound);
-    final scannedFound = await _findHealthyBase(
-      scanRound,
-      timeout: const Duration(milliseconds: 1500),
-    );
-    if (scannedFound != null) {
-      await _persistResolvedBase(override, scannedFound);
-      return ApiConfig.apiBaseFor(scannedFound);
+    final now = DateTime.now();
+    final canRescan = _lastSubnetScanAt == null ||
+        now.difference(_lastSubnetScanAt!) >= _subnetScanCooldown;
+    if (canRescan) {
+      _lastSubnetScanAt = now;
+      final scanRound = _expandSubnetCandidates(firstRound);
+      final scannedFound = await _findHealthyBase(
+        scanRound,
+        timeout: const Duration(milliseconds: 900),
+      );
+      if (scannedFound != null) {
+        await _persistResolvedBase(override, scannedFound);
+        return ApiConfig.apiBaseFor(scannedFound);
+      }
     }
 
     final hint = firstRound.take(6).join(', ');
     throw ApiException(
       0,
-      'Unable to connect backend. Make sure phone and backend are on the same LAN. Tried: $hint',
+      canRescan
+          ? 'Unable to connect backend. Make sure phone and backend are on the same LAN. Tried: $hint'
+          : 'Backend is still unreachable. To avoid repeated LAN scanning, retry after a few minutes or use adb reverse.',
       null,
     );
   }

@@ -10,7 +10,13 @@ import java.math.BigDecimal;
  * custom foods belong to a specific user.
  */
 @Entity
-@Table(name = "food_nutrition")
+@Table(
+        name = "food_nutrition",
+        indexes = {
+                @Index(name = "idx_food_user_name", columnList = "user_id, name"),
+                @Index(name = "idx_food_name", columnList = "name")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

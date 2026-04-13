@@ -1,5 +1,12 @@
 # 🚀 Spring Boot 启动说明
 
+## 安全提醒
+
+- 不要把真实数据库密码和 JWT 密钥写进 `application*.yml` 后提交到仓库
+- 当前项目已改为优先读取环境变量：`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`
+- 开发时请参考仓库中的 `.env.example` 手动设置本机环境变量
+- 生产环境默认使用 `ddl-auto: validate`，不要改回 `update`
+
 ## ⚡ 快速启动（推荐）
 
 ### Windows 用户

@@ -1,0 +1,36 @@
+# 测试环境配置
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+logging:
+  level:
+    root: WARN
+    com.diabetes.health: DEBUG
+    org.springframework.web: DEBUG
+
+app:
+  jwt:
+    secret: test-secret-key-for-unit-testing-purpose-only-32chars
+    expiration-seconds: 3600  # 1 hour

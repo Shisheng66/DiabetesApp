@@ -1,0 +1,30 @@
+package com.diabetes.health.controller;
+
+import com.diabetes.health.dto.AuthDto;
+import com.diabetes.health.service.AuthService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * 认证接口（无需登录）
+ * 注册：POST /api/auth/register
+ * 登录：POST /api/auth/login
+ */
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final AuthService authService;
+
+    @PostMapping("/register")
+    public AuthDto.LoginResponse register(@Valid @RequestBody AuthDto.RegisterRequest request) {
+        return authService.register(request);
+    }
+
+    @PostMapping("/login")
+    public AuthDto.LoginResponse login(@Valid @RequestBody AuthDto.LoginRequest request) {
+        return authService.login(request);
+    }
+}

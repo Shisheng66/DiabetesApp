@@ -1,0 +1,34 @@
+# Root
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Backend
+backend/target/
+backend/.mvn/
+backend/*.log
+
+# Frontend / Flutter
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub/
+frontend/.pub-cache/
+frontend/coverage/
+frontend/*.log
+frontend/*.err
+frontend/*.pid
+frontend/devtools_options.yaml
+frontend/ui_after_latest.xml
+frontend/android/.gradle/
+frontend/android/.kotlin/
+frontend/android/local.properties
+frontend/android/app/.cxx/
+frontend/windows/flutter/ephemeral/
+frontend/linux/flutter/ephemeral/
+frontend/macos/Flutter/ephemeral/

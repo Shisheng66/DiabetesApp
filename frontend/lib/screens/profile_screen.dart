@@ -134,18 +134,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
       text: '${user['avatarUrl'] ?? ''}',
     );
 
-    final result = await showModalBottomSheet<Map<String, String?>>(
+    final result = await showDialog<Map<String, String?>>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
           ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
@@ -168,20 +173,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () {
-                    final nickname = nicknameCtrl.text.trim().isEmpty
-                        ? null
-                        : nicknameCtrl.text.trim();
-                    final avatarUrl = avatarCtrl.text.trim().isEmpty
-                        ? null
-                        : avatarCtrl.text.trim();
-                    Navigator.pop(ctx, {
-                      'nickname': nickname,
-                      'avatarUrl': avatarUrl,
-                    });
-                  },
-                  child: const Text('保存'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          final nickname = nicknameCtrl.text.trim().isEmpty
+                              ? null
+                              : nicknameCtrl.text.trim();
+                          final avatarUrl = avatarCtrl.text.trim().isEmpty
+                              ? null
+                              : avatarCtrl.text.trim();
+                          FocusScope.of(ctx).unfocus();
+                          Navigator.of(
+                            ctx,
+                            rootNavigator: true,
+                          ).pop({'nickname': nickname, 'avatarUrl': avatarUrl});
+                        },
+                        child: const Text('保存'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -189,9 +208,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
-
-    nicknameCtrl.dispose();
-    avatarCtrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      nicknameCtrl.dispose();
+      avatarCtrl.dispose();
+    });
 
     if (result == null) return;
 
@@ -204,8 +224,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       if (!mounted) return;
       _applyLocalUserPatch(nickname: nickname, avatarUrl: avatarUrl);
-      _refreshUserSilently();
-      AppToast.success(context, '个人信息修改成功');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _refreshUserSilently();
+        AppToast.success(context, '个人信息修改成功');
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -814,18 +837,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _headerCard(),
                   const SizedBox(height: 14),
-                  const FrostPanel(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SectionTitle(
-                          title: '账户与资料',
-                          subtitle: '把昵称、头像和健康档案放到同一条信息轴线上维护',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
                   _menuCard(
                     icon: Icons.edit_outlined,
                     title: '编辑个人信息',
@@ -843,18 +854,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: '查看健康档案',
                     subtitle: '查看已保存的档案详情',
                     onTap: _showHealthProfile,
-                  ),
-                  const SizedBox(height: 4),
-                  const FrostPanel(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SectionTitle(
-                          title: '提醒与安全',
-                          subtitle: '集中管理提醒推送、提醒列表和密码安全',
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 10),
                   _menuCard(

@@ -258,10 +258,14 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAdd,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('新增记录'),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 78),
+        child: GlassActionButton(
+          onTap: _showAdd,
+          icon: Icons.add_rounded,
+          label: '新增记录',
+        ),
       ),
       body: HealthPageBackground(
         topTint: const Color(0xFFD9F1EE),

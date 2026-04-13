@@ -989,10 +989,14 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addRecord,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('记录血糖'),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 78),
+        child: GlassActionButton(
+          onTap: _addRecord,
+          icon: Icons.add_rounded,
+          label: '记录血糖',
+        ),
       ),
       body: Container(
         decoration: const BoxDecoration(),

@@ -268,6 +268,94 @@ class SurfaceButton extends StatelessWidget {
   }
 }
 
+class GlassActionButton extends StatelessWidget {
+  const GlassActionButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: enabled
+                      ? [
+                          Colors.white.withValues(alpha: 0.30),
+                          Colors.white.withValues(alpha: 0.10),
+                        ]
+                      : [
+                          Colors.white.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0.06),
+                        ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: enabled ? 0.24 : 0.12),
+                  width: 0.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(
+                      0x11000000,
+                    ).withValues(alpha: enabled ? 0.10 : 0.04),
+                    blurRadius: 14,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 17,
+                    color: enabled
+                        ? const Color(0xFF0B8A7D)
+                        : const Color(0xFF7E9693),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: enabled
+                          ? const Color(0xFF173836)
+                          : const Color(0xFF7E9693),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _GlowOrb extends StatelessWidget {
   const _GlowOrb({required this.size, required this.color});
 

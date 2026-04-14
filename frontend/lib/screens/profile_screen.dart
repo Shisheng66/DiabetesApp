@@ -30,6 +30,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'CUSTOM': '自定义',
   };
 
+  static const Map<String, String> _diabetesTypeNames = {
+    'TYPE1': '一型',
+    'TYPE2': '二型',
+    'OTHER': '1.5型',
+    'GESTATIONAL': '妊娠型',
+  };
+
   Map<String, dynamic>? _user;
   bool _loading = true;
   String? _error;
@@ -111,6 +118,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return const <String, dynamic>{};
   }
 
+  String _diabetesTypeText(dynamic value) {
+    final key = value?.toString();
+    return _diabetesTypeNames[key] ?? (key?.isNotEmpty == true ? key! : '未设置');
+  }
+
   Future<void> _logout() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -141,91 +153,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _showEditMe() async {
     final user = _user ?? const <String, dynamic>{};
-    final nicknameCtrl = TextEditingController(
-      text: '${user['nickname'] ?? ''}',
+    final result = await Navigator.of(context).push<Map<String, String?>>(
+      MaterialPageRoute(
+        builder: (_) => _BasicProfileEditScreen(
+          initialNickname: '${user['nickname'] ?? ''}',
+          initialAvatarUrl: '${user['avatarUrl'] ?? ''}',
+        ),
+      ),
     );
-    final avatarCtrl = TextEditingController(
-      text: '${user['avatarUrl'] ?? ''}',
-    );
-
-    final result = await showDialog<Map<String, String?>>(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 24,
-          ),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '编辑个人信息',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: nicknameCtrl,
-                  decoration: const InputDecoration(labelText: '昵称'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: avatarCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '头像地址（可选）',
-                    hintText: 'https://...',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('取消'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () {
-                          final nickname = nicknameCtrl.text.trim().isEmpty
-                              ? null
-                              : nicknameCtrl.text.trim();
-                          final avatarUrl = avatarCtrl.text.trim().isEmpty
-                              ? null
-                              : avatarCtrl.text.trim();
-                          FocusScope.of(ctx).unfocus();
-                          Navigator.of(
-                            ctx,
-                            rootNavigator: true,
-                          ).pop({'nickname': nickname, 'avatarUrl': avatarUrl});
-                        },
-                        child: const Text('保存'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      nicknameCtrl.dispose();
-      avatarCtrl.dispose();
-    });
 
     if (result == null) return;
 
@@ -238,11 +173,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       if (!mounted) return;
       _applyLocalUserPatch(nickname: nickname, avatarUrl: avatarUrl);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _refreshUserSilently();
-        AppToast.success(context, '个人信息修改成功');
-      });
+      _refreshUserSilently();
+      AppToast.success(context, '个人信息修改成功');
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -289,7 +221,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       text: '${profile['targetPbgMax'] ?? ''}',
     );
     var gender = (profile['gender'] ?? 'UNKNOWN').toString();
-    var diabetesType = (profile['diabetesType'] ?? 'TYPE2').toString();
+    var diabetesType = switch ((profile['diabetesType'] ?? 'TYPE2')
+        .toString()) {
+      'TYPE1' => 'TYPE1',
+      'TYPE2' => 'TYPE2',
+      'OTHER' => 'OTHER',
+      _ => 'TYPE2',
+    };
 
     await showModalBottomSheet<void>(
       context: context,
@@ -355,13 +293,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       value: diabetesType,
                       decoration: const InputDecoration(labelText: '糖尿病类型'),
                       items: const [
-                        DropdownMenuItem(value: 'TYPE1', child: Text('1 型')),
-                        DropdownMenuItem(value: 'TYPE2', child: Text('2 型')),
-                        DropdownMenuItem(
-                          value: 'GESTATIONAL',
-                          child: Text('妊娠'),
-                        ),
-                        DropdownMenuItem(value: 'OTHER', child: Text('其他')),
+                        DropdownMenuItem(value: 'TYPE1', child: Text('一型')),
+                        DropdownMenuItem(value: 'TYPE2', child: Text('二型')),
+                        DropdownMenuItem(value: 'OTHER', child: Text('1.5型')),
                       ],
                       onChanged: (v) =>
                           setModal(() => diabetesType = v ?? diabetesType),
@@ -529,7 +463,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ? null
                     : '${profile['weightKg']} kg',
               ),
-              _infoRow('糖尿病类型', profile['diabetesType']),
+              _infoRow('糖尿病类型', _diabetesTypeText(profile['diabetesType'])),
               _infoRow('用药情况', profile['medicationStatus']),
               _infoRow(
                 '空腹目标',
@@ -832,7 +766,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = (user['nickname'] ?? user['phone'] ?? '用户').toString();
     final phone = (user['phone'] ?? '').toString();
     final profile = _asMap(user['healthProfile']);
-    final diabetesType = (profile['diabetesType'] ?? '未设置').toString();
+    final diabetesType = _diabetesTypeText(profile['diabetesType']);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1055,6 +989,95 @@ class _ErrorPane extends StatelessWidget {
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('重试')),
         ],
+      ),
+    );
+  }
+}
+
+class _BasicProfileEditScreen extends StatefulWidget {
+  const _BasicProfileEditScreen({
+    required this.initialNickname,
+    required this.initialAvatarUrl,
+  });
+
+  final String initialNickname;
+  final String initialAvatarUrl;
+
+  @override
+  State<_BasicProfileEditScreen> createState() =>
+      _BasicProfileEditScreenState();
+}
+
+class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
+  late final TextEditingController _nicknameCtrl;
+  late final TextEditingController _avatarCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _nicknameCtrl = TextEditingController(text: widget.initialNickname);
+    _avatarCtrl = TextEditingController(text: widget.initialAvatarUrl);
+  }
+
+  @override
+  void dispose() {
+    _nicknameCtrl.dispose();
+    _avatarCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('编辑个人信息')),
+      body: HealthPageBackground(
+        topTint: const Color(0xFFDDF1EE),
+        accent: const Color(0xFFFFECDA),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          children: [
+            const FrostPanel(
+              child: SectionTitle(
+                title: '基础资料',
+                subtitle: '修改昵称和头像地址后，个人中心会立即更新显示。',
+              ),
+            ),
+            const SizedBox(height: 12),
+            FrostPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _nicknameCtrl,
+                    decoration: const InputDecoration(labelText: '昵称'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _avatarCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '头像地址（可选）',
+                      hintText: 'https://...',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop({
+                  'nickname': _nicknameCtrl.text.trim().isEmpty
+                      ? null
+                      : _nicknameCtrl.text.trim(),
+                  'avatarUrl': _avatarCtrl.text.trim().isEmpty
+                      ? null
+                      : _avatarCtrl.text.trim(),
+                });
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
       ),
     );
   }

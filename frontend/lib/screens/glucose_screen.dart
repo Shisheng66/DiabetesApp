@@ -1230,9 +1230,13 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
         query: {'page': '0', 'size': '50'},
       );
       final list = ((res['content'] ?? res['data']) as List? ?? const [])
-          .map((e) => e is Map<String, dynamic>
-              ? e
-              : (e is Map ? e.map((k, v) => MapEntry('$k', v)) : <String, dynamic>{}))
+          .map(
+            (e) => e is Map<String, dynamic>
+                ? e
+                : (e is Map
+                      ? e.map((k, v) => MapEntry('$k', v))
+                      : <String, dynamic>{}),
+          )
           .toList();
 
       if (!mounted) return;
@@ -1257,8 +1261,9 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
                   : const Color(0xFFE08A22);
               final label = isHigh ? '偏高' : '偏低';
               final timeStr = item['createdAt'] is String
-                  ? DateFormat('MM-dd HH:mm')
-                      .format(DateTime.parse(item['createdAt']).toLocal())
+                  ? DateFormat(
+                      'MM-dd HH:mm',
+                    ).format(DateTime.parse(item['createdAt']).toLocal())
                   : '--';
               return ListTile(
                 leading: CircleAvatar(

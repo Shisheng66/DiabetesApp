@@ -38,9 +38,11 @@ class AppTheme {
       scaffoldBackgroundColor: const Color(0xFFF4F8F7),
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(
-        centerTitle: false,
+        centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        backgroundColor: Color(0xFFF1F8F5),
+        surfaceTintColor: Colors.transparent,
         foregroundColor: _ink,
       ),
       cardTheme: CardThemeData(

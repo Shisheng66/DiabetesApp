@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/glucose_stats_widgets.dart';
 import '../widgets/premium_health_ui.dart';
 
 class GlucoseScreen extends StatefulWidget {
@@ -614,8 +615,34 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
               )
             else if (_trend.isEmpty)
               const SizedBox(height: 160, child: Center(child: Text('暂无趋势数据')))
-            else
+            else ...[
               SizedBox(height: 220, child: _lineChart()),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _legendDot(const Color(0xFF0B8A7D)),
+                  const SizedBox(width: 4),
+                  const Text(
+                    '血糖值',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
+                  ),
+                  const SizedBox(width: 16),
+                  _legendDash(const Color(0xFFE08A22)),
+                  const SizedBox(width: 4),
+                  const Text(
+                    '目标下限',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
+                  ),
+                  const SizedBox(width: 16),
+                  _legendDash(const Color(0xFFC53A2E)),
+                  const SizedBox(width: 4),
+                  const Text(
+                    '目标上限',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -644,6 +671,44 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
         maxX: (spots.length - 1).toDouble(),
         minY: minY - pad,
         maxY: maxY + pad,
+        extraLinesData: ExtraLinesData(
+          horizontalLines: [
+            HorizontalLine(
+              y: _targetMin,
+              color: const Color(0xFFE08A22),
+              strokeWidth: 1.2,
+              dashArray: [6, 4],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.only(right: 8, bottom: 4),
+                style: const TextStyle(
+                  color: Color(0xFFE08A22),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+                labelResolver: (line) => '目标下限 ${line.y.toStringAsFixed(1)}',
+              ),
+            ),
+            HorizontalLine(
+              y: _targetMax,
+              color: const Color(0xFFC53A2E),
+              strokeWidth: 1.2,
+              dashArray: [6, 4],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.only(right: 8, bottom: 4),
+                style: const TextStyle(
+                  color: Color(0xFFC53A2E),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+                labelResolver: (line) => '目标上限 ${line.y.toStringAsFixed(1)}',
+              ),
+            ),
+          ],
+        ),
         borderData: FlBorderData(show: false),
         gridData: const FlGridData(show: true, drawVerticalLine: false),
         titlesData: FlTitlesData(
@@ -725,10 +790,20 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
             SectionTitle(
               title: '分时段时间轴',
               subtitle: '把每一条记录放回具体时段和测量时间里查看',
-              trailing: FilledButton.tonalIcon(
-                onPressed: _addRecord,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('新增'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: _showAbnormalHistory,
+                    child: const Text('异常记录'),
+                  ),
+                  const SizedBox(width: 4),
+                  FilledButton.tonalIcon(
+                    onPressed: _addRecord,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('新增'),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 10),
@@ -1086,8 +1161,23 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
                 ),
                 const SizedBox(height: 12),
                 _adviceCard(),
+                if (_records.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  TirCard(
+                    values: _records
+                        .map((r) => _toDouble(r['valueMmolL']) ?? 0.0)
+                        .where((v) => v > 0)
+                        .toList(),
+                    targetMin: _targetMin,
+                    targetMax: _targetMax,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _trendCard(),
+                if (_stats.avg != null) ...[
+                  const SizedBox(height: 12),
+                  HbA1cBanner(avgGlucose: _stats.avg!),
+                ],
                 const SizedBox(height: 12),
                 _timelineCard(),
               ],
@@ -1117,4 +1207,92 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
       ),
     ),
   );
+
+  Widget _legendDot(Color color) => Container(
+    width: 10,
+    height: 10,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
+
+  Widget _legendDash(Color color) => Container(
+    width: 18,
+    height: 2,
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(1),
+    ),
+  );
+
+  Future<void> _showAbnormalHistory() async {
+    try {
+      final res = await ApiService.get(
+        '/blood-glucose/abnormal-events',
+        query: {'page': '0', 'size': '50'},
+      );
+      final list = ((res['content'] ?? res['data']) as List? ?? const [])
+          .map((e) => e is Map<String, dynamic>
+              ? e
+              : (e is Map ? e.map((k, v) => MapEntry('$k', v)) : <String, dynamic>{}))
+          .toList();
+
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          if (list.isEmpty) {
+            return const SizedBox(
+              height: 200,
+              child: Center(child: Text('近期无异常血糖记录')),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            itemCount: list.length,
+            itemBuilder: (_, i) {
+              final item = list[i];
+              final isHigh = item['type'] == 'HIGH';
+              final color = isHigh
+                  ? const Color(0xFFC53A2E)
+                  : const Color(0xFFE08A22);
+              final label = isHigh ? '偏高' : '偏低';
+              final timeStr = item['createdAt'] is String
+                  ? DateFormat('MM-dd HH:mm')
+                      .format(DateTime.parse(item['createdAt']).toLocal())
+                  : '--';
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: color.withValues(alpha: 0.12),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                title: Text('血糖$label事件'),
+                subtitle: Text(timeStr),
+                trailing: item['handled'] == true
+                    ? const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Color(0xFF0B8A7D),
+                      )
+                    : const Icon(
+                        Icons.pending_outlined,
+                        color: Color(0xFF9AA8A6),
+                      ),
+              );
+            },
+          );
+        },
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 }

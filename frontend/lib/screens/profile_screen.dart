@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -16,6 +17,19 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static const Map<String, String> _reminderTypeNames = {
+    'GLUCOSE_TEST': '测血糖',
+    'MEDICINE': '用药提醒',
+    'EXERCISE': '运动提醒',
+    'DIET': '饮食提醒',
+  };
+
+  static const Map<String, String> _repeatTypeNames = {
+    'DAILY': '每天',
+    'WORKDAY': '工作日',
+    'CUSTOM': '自定义',
+  };
+
   Map<String, dynamic>? _user;
   bool _loading = true;
   String? _error;
@@ -564,19 +578,135 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  title: Text((item['type'] ?? '提醒').toString()),
-                  subtitle: Text(
-                    '${item['timeOfDay'] ?? '--:--'} · ${item['repeatType'] ?? 'DAILY'}',
+                  title: Text(
+                    _reminderTypeNames[item['type']?.toString()] ??
+                        (item['type'] ?? '提醒').toString(),
                   ),
-                  trailing: Icon(
-                    item['enabled'] == false
-                        ? Icons.notifications_off
-                        : Icons.notifications_active,
-                    color: item['enabled'] == false
-                        ? const Color(0xFFA0A0A0)
-                        : const Color(0xFF0B8A7D),
+                  subtitle: Text(
+                    '${item['timeOfDay'] ?? '--:--'} · '
+                    '${_repeatTypeNames[item['repeatType']?.toString()] ?? '每天'}'
+                    '${item['remark']?.toString().isNotEmpty == true ? ' · ${item['remark']}' : ''}',
+                  ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        item['enabled'] == false
+                            ? Icons.notifications_off
+                            : Icons.notifications_active,
+                        color: item['enabled'] == false
+                            ? const Color(0xFFA0A0A0)
+                            : const Color(0xFF0B8A7D),
+                        size: 20,
+                      ),
+                      Text(
+                        item['enabled'] == false ? '已关闭' : '已开启',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: item['enabled'] == false
+                              ? const Color(0xFFA0A0A0)
+                              : const Color(0xFF0B8A7D),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              );
+            },
+          );
+        },
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showAbnormalEvents() async {
+    try {
+      final res = await ApiService.get(
+        '/blood-glucose/abnormal-events',
+        query: {'page': '0', 'size': '100'},
+      );
+      final list = ((res['content'] ?? res['data']) as List? ?? const [])
+          .map(_asMap)
+          .toList();
+
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (ctx) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            expand: false,
+            builder: (_, ctrl) {
+              if (list.isEmpty) {
+                return const Center(child: Text('太棒了，近期没有异常血糖记录！'));
+              }
+              return ListView.builder(
+                controller: ctrl,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                itemCount: list.length,
+                itemBuilder: (_, i) {
+                  final item = list[i];
+                  final isHigh = item['type'] == 'HIGH';
+                  final color = isHigh
+                      ? const Color(0xFFC53A2E)
+                      : const Color(0xFFE08A22);
+                  final label = isHigh ? '偏高' : '偏低';
+                  final timeStr = item['createdAt'] is String
+                      ? DateFormat(
+                          'yyyy-MM-dd HH:mm',
+                        ).format(DateTime.parse(item['createdAt']).toLocal())
+                      : '--';
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          isHigh
+                              ? Icons.arrow_upward_rounded
+                              : Icons.arrow_downward_rounded,
+                          color: color,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        '血糖$label事件',
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(timeStr),
+                      trailing: item['handled'] == true
+                          ? const Chip(
+                              label: Text(
+                                '已处理',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                              backgroundColor: Color(0xFFE8F6F3),
+                            )
+                          : const Chip(
+                              label: Text(
+                                '未处理',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                              backgroundColor: Color(0xFFFFF4F1),
+                            ),
+                    ),
+                  );
+                },
               );
             },
           );
@@ -867,6 +997,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: '提醒列表',
                     subtitle: '查看当前已生效提醒',
                     onTap: _showReminders,
+                  ),
+                  _menuCard(
+                    icon: Icons.warning_amber_rounded,
+                    title: '血糖异常记录',
+                    subtitle: '查看历次偏高偏低事件',
+                    onTap: _showAbnormalEvents,
                   ),
                   _menuCard(
                     icon: Icons.lock_outline_rounded,

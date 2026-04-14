@@ -10,6 +10,12 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+/**
+ * JWT 工具类 — 已升级到 jjwt 0.12.x API。
+ *
+ * pom.xml 依赖需同步升级：
+ *   <version>0.12.6</version>  （jjwt-api / jjwt-impl / jjwt-jackson）
+ */
 @Component
 public class JwtUtil {
 
@@ -27,21 +33,24 @@ public class JwtUtil {
     public String generate(Long userId, String phone, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
+        // jjwt 0.12.x：使用 subject() 替代 claim("sub", ...)
         return Jwts.builder()
-                .claim("sub", String.valueOf(userId))
+                .subject(String.valueOf(userId))
                 .claim("phone", phone)
                 .claim("role", role)
-                .claim("iat", now)
-                .claim("exp", expiry)
+                .issuedAt(now)
+                .expiration(expiry)
                 .signWith(key)
                 .compact();
     }
 
     public Claims parse(String token) {
+        // jjwt 0.12.x：使用 verifyWith().build().parseSignedClaims()
         return Jwts.parser()
-                .setSigningKey(key)
-                .parseClaimsJws(token)
-                .getBody();
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     public Long getUserId(String token) {

@@ -215,6 +215,31 @@ public class BloodGlucoseService {
         return res;
     }
 
+    public BloodGlucoseDto.PageResult<BloodGlucoseDto.AbnormalEventResponse> listAbnormalEvents(
+            CurrentUser user,
+            int page,
+            int size
+    ) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Page<GlucoseAbnormalEvent> pageResult =
+                abnormalEventRepository.findByUserIdOrderByCreatedAtDesc(
+                        user.getId(),
+                        pageRequest
+                );
+        BloodGlucoseDto.PageResult<BloodGlucoseDto.AbnormalEventResponse> result =
+                new BloodGlucoseDto.PageResult<>();
+        result.setContent(
+                pageResult.getContent().stream()
+                        .map(BloodGlucoseDto.AbnormalEventResponse::from)
+                        .toList()
+        );
+        result.setPage(pageResult.getNumber());
+        result.setSize(pageResult.getSize());
+        result.setTotalElements(pageResult.getTotalElements());
+        result.setTotalPages(pageResult.getTotalPages());
+        return result;
+    }
+
     private BigDecimal defaultTargetMin(BloodGlucoseRecord.MeasureType measureType) {
         if (measureType == BloodGlucoseRecord.MeasureType.POST_MEAL) {
             return new BigDecimal("4.4");

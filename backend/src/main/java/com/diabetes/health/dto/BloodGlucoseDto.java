@@ -78,4 +78,30 @@ public class BloodGlucoseDto {
         private long totalElements;
         private int totalPages;
     }
+
+    @Data
+    public static class AbnormalEventResponse {
+        private Long id;
+        private Long userId;
+        private Long recordId;
+        private String type;
+        private String level;
+        private Boolean handled;
+        private Instant createdAt;
+
+        public static AbnormalEventResponse from(
+                com.diabetes.health.entity.GlucoseAbnormalEvent e
+        ) {
+            if (e == null) return null;
+            AbnormalEventResponse r = new AbnormalEventResponse();
+            r.setId(e.getId());
+            r.setUserId(e.getUserId());
+            r.setRecordId(e.getRecordId());
+            r.setType(e.getType() != null ? e.getType().name() : null);
+            r.setLevel(e.getLevel());
+            r.setHandled(e.getHandled());
+            r.setCreatedAt(e.getCreatedAt());
+            return r;
+        }
+    }
 }

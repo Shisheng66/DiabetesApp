@@ -10,17 +10,12 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.Map;
 
 /**
  * 血糖记录与趋势（需登录）
- * POST   /api/blood-glucose/records           新增血糖
- * GET    /api/blood-glucose/records           分页列表（可选 startDate,endDate,measureType）
- * GET    /api/blood-glucose/records/{id}      单条
- * DELETE /api/blood-glucose/records/{id}      删除
- * GET    /api/blood-glucose/trend/daily       日趋势
- * GET    /api/blood-glucose/trend/weekly      周趋势
- * GET    /api/blood-glucose/trend/monthly     月趋势
+ *
+ * 新增端点：
+ * GET /api/blood-glucose/abnormal-events   分页查询当前用户的血糖异常事件
  */
 @RestController
 @RequestMapping("/api/blood-glucose")
@@ -30,8 +25,9 @@ public class BloodGlucoseController {
     private final BloodGlucoseService bloodGlucoseService;
 
     @PostMapping("/records")
-    public BloodGlucoseDto.RecordResponse create(@AuthenticationPrincipal CurrentUser user,
-                                                  @Valid @RequestBody BloodGlucoseDto.CreateRecordRequest request) {
+    public BloodGlucoseDto.RecordResponse create(
+            @AuthenticationPrincipal CurrentUser user,
+            @Valid @RequestBody BloodGlucoseDto.CreateRecordRequest request) {
         return bloodGlucoseService.create(user, request);
     }
 
@@ -47,7 +43,9 @@ public class BloodGlucoseController {
     }
 
     @GetMapping("/records/{id}")
-    public BloodGlucoseDto.RecordResponse getById(@AuthenticationPrincipal CurrentUser user, @PathVariable Long id) {
+    public BloodGlucoseDto.RecordResponse getById(
+            @AuthenticationPrincipal CurrentUser user,
+            @PathVariable Long id) {
         return bloodGlucoseService.getById(user, id);
     }
 
@@ -76,5 +74,17 @@ public class BloodGlucoseController {
             @RequestParam int year,
             @RequestParam int month) {
         return bloodGlucoseService.trendMonthly(user, year, month);
+    }
+
+    /**
+     * 新增：查询当前用户的血糖异常事件列表（分页，按时间降序）
+     * GET /api/blood-glucose/abnormal-events?page=0&size=50
+     */
+    @GetMapping("/abnormal-events")
+    public BloodGlucoseDto.PageResult<BloodGlucoseDto.AbnormalEventResponse> listAbnormalEvents(
+            @AuthenticationPrincipal CurrentUser user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return bloodGlucoseService.listAbnormalEvents(user, page, size);
     }
 }

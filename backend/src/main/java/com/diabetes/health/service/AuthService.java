@@ -24,12 +24,22 @@ public class AuthService {
     private final UserHealthProfileRepository healthProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final AuthVerificationService authVerificationService;
+
+    public AuthDto.CaptchaResponse createCaptcha() {
+        return authVerificationService.createCaptcha();
+    }
+
+    public AuthDto.SendSmsCodeResponse sendSmsCode(AuthDto.SendSmsCodeRequest request) {
+        return authVerificationService.sendSmsCode(request);
+    }
 
     @Transactional
     public AuthDto.LoginResponse register(AuthDto.RegisterRequest req) {
         if (userAccountRepository.existsByPhone(req.getPhone())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该手机号已注册");
         }
+        authVerificationService.verifySmsCode(req.getPhone(), AuthDto.SmsScene.REGISTER, req.getSmsCode());
         UserAccount.AccountStatus status = UserAccount.AccountStatus.NORMAL;
         UserAccount.Role role;
         try {
@@ -61,13 +71,21 @@ public class AuthService {
     }
 
     public AuthDto.LoginResponse login(AuthDto.LoginRequest req) {
+        AuthDto.LoginType loginType = req.getLoginType() == null ? AuthDto.LoginType.PASSWORD : req.getLoginType();
         UserAccount account = userAccountRepository.findByPhone(req.getPhone())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "手机号或密码错误"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号信息不正确"));
         if (account.getStatus() != UserAccount.AccountStatus.NORMAL) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "账号已禁用");
         }
-        if (!passwordEncoder.matches(req.getPassword(), account.getPasswordHash())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "手机号或密码错误");
+        if (loginType == AuthDto.LoginType.SMS) {
+            authVerificationService.verifySmsCode(req.getPhone(), AuthDto.SmsScene.LOGIN, req.getSmsCode());
+        } else {
+            if (req.getPassword() == null || req.getPassword().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入登录密码");
+            }
+            if (!passwordEncoder.matches(req.getPassword(), account.getPasswordHash())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "手机号或密码错误");
+            }
         }
         account.setLastLoginAt(Instant.now());
         userAccountRepository.save(account);

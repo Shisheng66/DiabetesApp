@@ -18,7 +18,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   static const Map<String, String> _reminderTypeNames = {
-    'GLUCOSE_TEST': '测血糖',
+    'GLUCOSE_TEST': '测血糖提醒',
     'MEDICINE': '用药提醒',
     'EXERCISE': '运动提醒',
     'DIET': '饮食提醒',
@@ -108,19 +108,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loading = false;
       });
     } catch (_) {
-      // Keep the optimistic local value to avoid flashing the error page.
+      // Keep optimistic local state.
     }
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return value.map((k, v) => MapEntry('$k', v));
-    return const <String, dynamic>{};
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic value) {
+    if (value is List) {
+      return value.map(_asMap).toList();
+    }
+    return const <Map<String, dynamic>>[];
   }
 
   String _diabetesTypeText(dynamic value) {
     final key = value?.toString();
-    return _diabetesTypeNames[key] ?? (key?.isNotEmpty == true ? key! : '未设置');
+    if (key == null || key.isEmpty) return '未设置';
+    return _diabetesTypeNames[key] ?? key;
   }
 
   Future<void> _logout() async {
@@ -226,6 +234,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'TYPE1' => 'TYPE1',
       'TYPE2' => 'TYPE2',
       'OTHER' => 'OTHER',
+      'GESTATIONAL' => 'GESTATIONAL',
       _ => 'TYPE2',
     };
 
@@ -253,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: gender,
+                      initialValue: gender,
                       decoration: const InputDecoration(labelText: '性别'),
                       items: const [
                         DropdownMenuItem(value: 'MALE', child: Text('男')),
@@ -290,12 +299,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: diabetesType,
+                      initialValue: diabetesType,
                       decoration: const InputDecoration(labelText: '糖尿病类型'),
                       items: const [
                         DropdownMenuItem(value: 'TYPE1', child: Text('一型')),
                         DropdownMenuItem(value: 'TYPE2', child: Text('二型')),
                         DropdownMenuItem(value: 'OTHER', child: Text('1.5型')),
+                        DropdownMenuItem(
+                          value: 'GESTATIONAL',
+                          child: Text('妊娠型'),
+                        ),
                       ],
                       onChanged: (v) =>
                           setModal(() => diabetesType = v ?? diabetesType),
@@ -315,7 +328,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: '空腹最小',
+                              labelText: '空腹最低',
                             ),
                           ),
                         ),
@@ -327,7 +340,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: '空腹最大',
+                              labelText: '空腹最高',
                             ),
                           ),
                         ),
@@ -343,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: '餐后最小',
+                              labelText: '餐后最低',
                             ),
                           ),
                         ),
@@ -355,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: '餐后最大',
+                              labelText: '餐后最高',
                             ),
                           ),
                         ),
@@ -489,16 +502,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _showReminders() async {
     try {
       final res = await ApiService.get('/reminders');
-      final list = (res['data'] is List) ? (res['data'] as List) : const [];
-      final reminders = list.map(_asMap).toList();
-      await NotificationService.syncFromReminderList(reminders);
+      final list = <Map<String, dynamic>>[
+        ..._asMapList(res['data']),
+        if (res['content'] is List && (res['data'] is! List))
+          ..._asMapList(res['content']),
+      ];
+      await NotificationService.syncFromReminderList(list);
 
       if (!mounted) return;
       await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
         builder: (ctx) {
-          if (reminders.isEmpty) {
+          if (list.isEmpty) {
             return const SizedBox(
               height: 220,
               child: Center(child: Text('当前没有提醒设置')),
@@ -506,15 +522,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            itemCount: reminders.length,
+            itemCount: list.length,
             itemBuilder: (_, i) {
-              final item = reminders[i];
+              final item = list[i];
+              final enabled = item['enabled'] != false;
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   title: Text(
                     _reminderTypeNames[item['type']?.toString()] ??
-                        (item['type'] ?? '提醒').toString(),
+                        '${item['type'] ?? '提醒'}',
                   ),
                   subtitle: Text(
                     '${item['timeOfDay'] ?? '--:--'} · '
@@ -525,21 +542,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        item['enabled'] == false
-                            ? Icons.notifications_off
-                            : Icons.notifications_active,
-                        color: item['enabled'] == false
-                            ? const Color(0xFFA0A0A0)
-                            : const Color(0xFF0B8A7D),
+                        enabled
+                            ? Icons.notifications_active
+                            : Icons.notifications_off,
+                        color: enabled
+                            ? const Color(0xFF0B8A7D)
+                            : const Color(0xFFA0A0A0),
                         size: 20,
                       ),
                       Text(
-                        item['enabled'] == false ? '已关闭' : '已开启',
+                        enabled ? '已开启' : '已关闭',
                         style: TextStyle(
                           fontSize: 10,
-                          color: item['enabled'] == false
-                              ? const Color(0xFFA0A0A0)
-                              : const Color(0xFF0B8A7D),
+                          color: enabled
+                              ? const Color(0xFF0B8A7D)
+                              : const Color(0xFFA0A0A0),
                         ),
                       ),
                     ],
@@ -564,9 +581,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         '/blood-glucose/abnormal-events',
         query: {'page': '0', 'size': '100'},
       );
-      final list = ((res['content'] ?? res['data']) as List? ?? const [])
-          .map(_asMap)
-          .toList();
+      final list = _asMapList(res['content'] ?? res['data']);
 
       if (!mounted) return;
       await showModalBottomSheet<void>(
@@ -574,13 +589,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         showDragHandle: true,
         isScrollControlled: true,
         builder: (ctx) {
+          if (list.isEmpty) {
+            return const SizedBox(
+              height: 260,
+              child: Center(child: Text('近期没有血糖异常事件记录')),
+            );
+          }
           return DraggableScrollableSheet(
             initialChildSize: 0.6,
             expand: false,
             builder: (_, ctrl) {
-              if (list.isEmpty) {
-                return const Center(child: Text('太棒了，近期没有异常血糖记录！'));
-              }
               return ListView.builder(
                 controller: ctrl,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -765,6 +783,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = _user ?? const <String, dynamic>{};
     final name = (user['nickname'] ?? user['phone'] ?? '用户').toString();
     final phone = (user['phone'] ?? '').toString();
+    final avatarUrl = (user['avatarUrl'] ?? '').toString();
     final profile = _asMap(user['healthProfile']);
     final diabetesType = _diabetesTypeText(profile['diabetesType']);
     return Container(
@@ -789,17 +808,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              _ProfileAvatarCircle(
+                name: name,
+                avatarUrl: avatarUrl,
                 radius: 30,
+                borderColor: Colors.white.withValues(alpha: 0.26),
                 backgroundColor: Colors.white.withValues(alpha: 0.18),
-                child: Text(
-                  name.isEmpty ? 'U' : name.characters.first.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 22,
-                  ),
-                ),
+                textColor: Colors.white,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -904,7 +919,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _menuCard(
                     icon: Icons.edit_outlined,
                     title: '编辑个人信息',
-                    subtitle: '昵称、头像地址等',
+                    subtitle: '昵称、头像等基础资料',
                     onTap: _showEditMe,
                   ),
                   _menuCard(
@@ -923,7 +938,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _menuCard(
                     icon: Icons.alarm_rounded,
                     title: '血糖提醒推送',
-                    subtitle: '按空腹/餐后/睡前设置提醒',
+                    subtitle: '按空腹、餐后、睡前设置提醒',
                     onTap: _openGlucoseReminderSettings,
                   ),
                   _menuCard(
@@ -1010,24 +1025,103 @@ class _BasicProfileEditScreen extends StatefulWidget {
 
 class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
   late final TextEditingController _nicknameCtrl;
-  late final TextEditingController _avatarCtrl;
+  late String _avatarUrl;
 
   @override
   void initState() {
     super.initState();
     _nicknameCtrl = TextEditingController(text: widget.initialNickname);
-    _avatarCtrl = TextEditingController(text: widget.initialAvatarUrl);
+    _avatarUrl = widget.initialAvatarUrl.trim();
   }
 
   @override
   void dispose() {
     _nicknameCtrl.dispose();
-    _avatarCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _editAvatar() async {
+    final controller = TextEditingController(text: _avatarUrl);
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '修改头像',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '当前后端仍然保存头像地址，因此这里支持直接粘贴图片链接，点头像就能改。',
+                style: TextStyle(color: Color(0xFF5A7673), height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: '头像地址',
+                  hintText: 'https://example.com/avatar.jpg',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(''),
+                      child: const Text('清除头像'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.of(ctx).pop(controller.text.trim()),
+                      child: const Text('应用头像'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+    setState(() {
+      _avatarUrl = result.trim();
+    });
+  }
+
+  void _submit() {
+    Navigator.of(context).pop({
+      'nickname': _nicknameCtrl.text.trim().isEmpty
+          ? null
+          : _nicknameCtrl.text.trim(),
+      'avatarUrl': _avatarUrl.trim().isEmpty ? null : _avatarUrl.trim(),
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final previewName = _nicknameCtrl.text.trim().isEmpty
+        ? widget.initialNickname
+        : _nicknameCtrl.text.trim();
     return Scaffold(
       appBar: AppBar(title: const Text('编辑个人信息')),
       body: HealthPageBackground(
@@ -1039,7 +1133,7 @@ class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
             const FrostPanel(
               child: SectionTitle(
                 title: '基础资料',
-                subtitle: '修改昵称和头像地址后，个人中心会立即更新显示。',
+                subtitle: '头像改为点击头像即可修改，昵称和头像保存后会立即同步到个人中心。',
               ),
             ),
             const SizedBox(height: 12),
@@ -1047,36 +1141,139 @@ class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Center(
+                    child: InkWell(
+                      onTap: _editAvatar,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Column(
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              _ProfileAvatarCircle(
+                                name: previewName,
+                                avatarUrl: _avatarUrl,
+                                radius: 42,
+                                borderColor: const Color(0xFFBFE0DB),
+                                backgroundColor: const Color(0xFFEAF5F2),
+                                textColor: const Color(0xFF0B8A7D),
+                              ),
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0B8A7D),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit_rounded,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            '点击头像修改',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF173836),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _avatarUrl.trim().isEmpty
+                                ? '当前使用默认头像'
+                                : '当前已设置头像链接',
+                            style: const TextStyle(
+                              color: Color(0xFF5A7673),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   TextField(
                     controller: _nicknameCtrl,
+                    onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(labelText: '昵称'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _avatarCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '头像地址（可选）',
-                      hintText: 'https://...',
-                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop({
-                  'nickname': _nicknameCtrl.text.trim().isEmpty
-                      ? null
-                      : _nicknameCtrl.text.trim(),
-                  'avatarUrl': _avatarCtrl.text.trim().isEmpty
-                      ? null
-                      : _avatarCtrl.text.trim(),
-                });
-              },
-              child: const Text('保存'),
-            ),
+            FilledButton(onPressed: _submit, child: const Text('保存')),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatarCircle extends StatelessWidget {
+  const _ProfileAvatarCircle({
+    required this.name,
+    required this.avatarUrl,
+    required this.radius,
+    required this.borderColor,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final String name;
+  final String avatarUrl;
+  final double radius;
+  final Color borderColor;
+  final Color backgroundColor;
+  final Color textColor;
+
+  bool get _hasNetworkAvatar {
+    return avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = name.isEmpty ? 'U' : name.characters.first.toUpperCase();
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 1.4),
+      ),
+      child: ClipOval(
+        child: _hasNetworkAvatar
+            ? Image.network(
+                avatarUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallback(fallback),
+              )
+            : _buildFallback(fallback),
+      ),
+    );
+  }
+
+  Widget _buildFallback(String fallback) {
+    return Container(
+      color: backgroundColor,
+      alignment: Alignment.center,
+      child: Text(
+        fallback,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w800,
+          fontSize: radius * 0.72,
         ),
       ),
     );

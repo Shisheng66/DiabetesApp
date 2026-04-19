@@ -27,4 +27,14 @@ public class AuthController {
     public AuthDto.LoginResponse login(@Valid @RequestBody AuthDto.LoginRequest request) {
         return authService.login(request);
     }
+
+    @GetMapping("/captcha")
+    public AuthDto.CaptchaResponse captcha() {
+        return authService.createCaptcha();
+    }
+
+    @PostMapping("/sms/send")
+    public AuthDto.SendSmsCodeResponse sendSmsCode(@Valid @RequestBody AuthDto.SendSmsCodeRequest request) {
+        return authService.sendSmsCode(request);
+    }
 }

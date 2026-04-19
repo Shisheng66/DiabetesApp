@@ -20,9 +20,10 @@ class ApiConfig {
     }
 
     if (Platform.isAndroid) {
-      // Emulator host access; localhost works when adb reverse is active.
-      candidates.add('http://10.0.2.2:8080');
+      // Real-device USB debugging usually relies on adb reverse.
       candidates.add('http://127.0.0.1:8080');
+      // Emulator host access fallback.
+      candidates.add('http://10.0.2.2:8080');
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       candidates.add('http://127.0.0.1:8080');
       candidates.add('http://localhost:8080');

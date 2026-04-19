@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'community_screen.dart';
@@ -62,6 +63,9 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final navBlur = kIsWeb
+        ? 28.0
+        : (defaultTargetPlatform == TargetPlatform.android ? 14.0 : 28.0);
     return Scaffold(
       extendBody: true,
       body: IndexedStack(index: _index, children: _pages),
@@ -70,7 +74,7 @@ class _MainShellState extends State<MainShell> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(26),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+            filter: ImageFilter.blur(sigmaX: navBlur, sigmaY: navBlur),
             child: Container(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
               decoration: BoxDecoration(

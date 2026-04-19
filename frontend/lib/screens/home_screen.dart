@@ -54,6 +54,31 @@ class _HomeScreenState extends State<HomeScreen> {
     return double.tryParse('$value');
   }
 
+  String _measureTypeText(String raw) {
+    switch (raw) {
+      case 'FASTING':
+        return '空腹';
+      case 'POST_MEAL':
+        return '餐后';
+      case 'BEFORE_SLEEP':
+        return '睡前';
+      case 'RANDOM':
+        return '随机';
+      default:
+        return '暂无时段';
+    }
+  }
+
+  String _measureTimeText(dynamic raw) {
+    if (raw is String) {
+      final dt = DateTime.tryParse(raw);
+      if (dt != null) {
+        return DateFormat('HH:mm').format(dt.toLocal());
+      }
+    }
+    return '--:--';
+  }
+
   String _glucoseStatus(double? value) {
     if (value == null) return '等待第一条数据';
     if (value < 3.9) return '偏低，建议尽快补充碳水';
@@ -221,7 +246,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _focusStrip(double? glucose, Map? latest, Color tone) {
-    final type = (latest?['measureType'] ?? '暂无时段').toString();
+    final type = _measureTypeText((latest?['measureType'] ?? '').toString());
+    final measureTime = _measureTimeText(latest?['measureTime']);
     final value = glucose == null ? '--' : glucose.toStringAsFixed(1);
     return FrostPanel(
       child: Column(
@@ -253,10 +279,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '测量时段：$type',
+                        '测量时间：$measureTime',
                         style: const TextStyle(
                           color: Color(0xFF35514E),
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '当前时段：$type',
+                        style: const TextStyle(
+                          color: Color(0xFF5A7673),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],

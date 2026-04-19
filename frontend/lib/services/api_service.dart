@@ -126,15 +126,16 @@ class ApiService {
 
   static Future<String> _doResolveApiBase() async {
     final override = await ServerUrlPrefs.getBaseUrlOverride();
-    final firstRound =
-        <String>[
-              if (override != null && override.isNotEmpty) override,
-              ...ApiConfig.baseUrlCandidates,
-            ]
-            .map(_normalizeBase)
-            .where((e) => e.isNotEmpty)
-            .toSet()
-            .toList(growable: false);
+    final firstRound = _prioritizeCandidates(
+      <String>[
+            if (override != null && override.isNotEmpty) override,
+            ...ApiConfig.baseUrlCandidates,
+          ]
+          .map(_normalizeBase)
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList(growable: false),
+    );
 
     final directFound = await _findHealthyBase(
       firstRound,
@@ -151,11 +152,14 @@ class ApiService {
     }
 
     final now = DateTime.now();
-    final canRescan = _lastSubnetScanAt == null ||
+    final canRescan =
+        _lastSubnetScanAt == null ||
         now.difference(_lastSubnetScanAt!) >= _subnetScanCooldown;
     if (canRescan) {
       _lastSubnetScanAt = now;
-      final scanRound = _expandSubnetCandidates(firstRound);
+      final scanRound = _prioritizeCandidates(
+        _expandSubnetCandidates(firstRound),
+      );
       final scannedFound = await _findHealthyBase(
         scanRound,
         timeout: const Duration(milliseconds: 900),
@@ -200,23 +204,40 @@ class ApiService {
     List<String> baseUrls, {
     required Duration timeout,
   }) async {
-    if (baseUrls.isEmpty) return null;
-
-    final checks = <Future<(String, bool)>>[];
     for (final base in baseUrls) {
-      checks.add(_probeBase(base, timeout));
-    }
-
-    final results = await Future.wait(checks);
-    final healthy = <String>{};
-    for (final item in results) {
-      if (item.$2) healthy.add(item.$1);
-    }
-
-    for (final base in baseUrls) {
-      if (healthy.contains(base)) return base;
+      final result = await _probeBase(base, timeout);
+      if (result.$2) {
+        return result.$1;
+      }
     }
     return null;
+  }
+
+  static List<String> _prioritizeCandidates(List<String> baseUrls) {
+    final loopback = <String>[];
+    final emulator = <String>[];
+    final lan = <String>[];
+    final others = <String>[];
+
+    for (final base in baseUrls) {
+      final host = Uri.tryParse(base)?.host ?? '';
+      if (host == '127.0.0.1' || host == 'localhost') {
+        loopback.add(base);
+      } else if (host == '10.0.2.2') {
+        emulator.add(base);
+      } else if (_looksLikeIpv4(host)) {
+        lan.add(base);
+      } else {
+        others.add(base);
+      }
+    }
+
+    return <String>[
+      ...loopback,
+      ...emulator,
+      ...others,
+      ...lan,
+    ].toSet().toList(growable: false);
   }
 
   static Future<(String, bool)> _probeBase(
@@ -224,11 +245,17 @@ class ApiService {
     Duration timeout,
   ) async {
     final normalized = _normalizeBase(base);
-    final probes = <Uri>[
-      Uri.parse('${ApiConfig.apiBaseFor(normalized)}/health'),
-      Uri.parse('$normalized/api/health'),
-      Uri.parse('$normalized/health'),
-    ].toSet().toList(growable: false);
+    final probes = <Uri>[];
+    for (final raw in <String>[
+      '${ApiConfig.apiBaseFor(normalized)}/health',
+      '$normalized/api/health',
+      '$normalized/health',
+    ]) {
+      final uri = Uri.tryParse(raw);
+      if (uri != null) {
+        probes.add(uri);
+      }
+    }
 
     for (final uri in probes) {
       try {
@@ -316,6 +343,11 @@ class ApiService {
     return a == 10 ||
         (a == 172 && b >= 16 && b <= 31) ||
         (a == 192 && b == 168);
+  }
+
+  static bool _looksLikeIpv4(String host) {
+    final parts = host.split('.');
+    return parts.length == 4 && parts.every((e) => int.tryParse(e) != null);
   }
 
   static String _normalizeBase(String input) {

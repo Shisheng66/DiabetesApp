@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -76,10 +77,13 @@ class FrostPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = tint ?? Colors.white;
+    final sigma = kIsWeb
+        ? 18.0
+        : (defaultTargetPlatform == TargetPlatform.android ? 10.0 : 18.0);
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
@@ -283,10 +287,13 @@ class GlassActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final sigma = kIsWeb
+        ? 22.0
+        : (defaultTargetPlatform == TargetPlatform.android ? 12.0 : 22.0);
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
         child: Material(
           color: Colors.transparent,
           child: InkWell(

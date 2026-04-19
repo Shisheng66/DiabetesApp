@@ -1,4 +1,4 @@
-# 生产环境配置
+# Production profile
 spring:
   config:
     activate:
@@ -10,7 +10,6 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      # 生产环境连接池配置
       maximum-pool-size: 20
       minimum-idle: 10
       idle-timeout: 300000
@@ -20,11 +19,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    database-platform: org.hibernate.dialect.MySQLDialect
     properties:
       hibernate:
         format_sql: false
-        dialect: org.hibernate.dialect.MySQLDialect
     show-sql: false
 
 logging:
@@ -37,4 +34,9 @@ logging:
 app:
   jwt:
     secret: ${JWT_SECRET}
-    expiration-seconds: 259200  # 3 days
+    expiration-seconds: 259200
+  auth:
+    captcha-expire-seconds: 180
+    sms-expire-seconds: 300
+    sms-cooldown-seconds: 60
+    expose-debug-sms-code: ${APP_AUTH_EXPOSE_DEBUG_SMS_CODE:false}

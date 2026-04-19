@@ -69,15 +69,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
       AppToast.success(context, '帖子发布成功');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   Future<void> _openDetail(Map<String, dynamic> post) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => _CommunityPostDetailScreen(post: post)),
+      MaterialPageRoute(
+        builder: (_) => CommunityPostDetailScreen(post: post),
+      ),
     );
     await _loadPosts();
   }
@@ -102,7 +102,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     if (value is String) {
       final dt = DateTime.tryParse(value);
       if (dt != null) {
-        return DateFormat('MM-dd HH:mm').format(dt.toLocal());
+        return DateFormat('MM月dd日 HH:mm').format(dt.toLocal());
       }
     }
     return '--';
@@ -121,11 +121,37 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
   }
 
+  Color _roleColor(String raw) {
+    switch (raw) {
+      case 'DOCTOR':
+        return const Color(0xFF2B6CB0);
+      case 'FAMILY':
+        return const Color(0xFF276749);
+      case 'ADMIN':
+        return const Color(0xFF744210);
+      default:
+        return const Color(0xFF4A5568);
+    }
+  }
+
+  Color _roleBg(String raw) {
+    switch (raw) {
+      case 'DOCTOR':
+        return const Color(0xFFEBF8FF);
+      case 'FAMILY':
+        return const Color(0xFFF0FFF4);
+      case 'ADMIN':
+        return const Color(0xFFFFFBEB);
+      default:
+        return const Color(0xFFEDF2F7);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('社区'),
+        title: const Text('病友社区'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -140,220 +166,312 @@ class _CommunityScreenState extends State<CommunityScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? Center(
-                child: FrostPanel(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.forum_outlined,
-                        size: 42,
-                        color: Color(0xFFC53A2E),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        _error!,
-                        style: const TextStyle(color: Color(0xFFC53A2E)),
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: _loadPosts,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: _loadPosts,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(30),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF4375C8),
-                            Color(0xFF6A99E5),
-                            Color(0xFF99B7F3),
-                          ],
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x224677C8),
-                            blurRadius: 26,
-                            offset: Offset(0, 12),
-                          ),
-                        ],
-                      ),
+                ? Center(
+                    child: FrostPanel(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            '病友社区',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '分享控糖经验、交流饮食与运动心得，让每天的管理不再是一个人面对。',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              height: 1.35,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          GlassActionButton(
-                            icon: Icons.edit_rounded,
-                            label: '发布新帖子',
-                            onTap: _openComposer,
-                          ),
+                          const Icon(Icons.forum_outlined, size: 42, color: Color(0xFFC53A2E)),
+                          const SizedBox(height: 10),
+                          Text(_error!, style: const TextStyle(color: Color(0xFFC53A2E))),
+                          const SizedBox(height: 12),
+                          FilledButton(onPressed: _loadPosts, child: const Text('重试')),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const FrostPanel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SectionTitle(
-                            title: '最新讨论',
-                            subtitle: '从饮食、血糖、运动到心态调整，大家都可以在这里继续聊。',
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadPosts,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+                      children: [
+                        // 顶部横幅
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(30),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF4375C8), Color(0xFF6A99E5), Color(0xFF99B7F3)],
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x224677C8),
+                                blurRadius: 26,
+                                offset: Offset(0, 12),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_posts.isEmpty)
-                      FrostPanel(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                '还没有帖子，来发第一条吧',
-                                style: TextStyle(color: Color(0xFF5A7673)),
+                                '病友社区',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                              const SizedBox(height: 14),
-                              GlassActionButton(
-                                icon: Icons.rate_review_rounded,
-                                label: '发布第一条帖子',
-                                onTap: _openComposer,
+                              const SizedBox(height: 8),
+                              const Text(
+                                '分享控糖经验、交流饮食与运动心得，\n让每天的管理不再是一个人面对。',
+                                style: TextStyle(color: Colors.white70, height: 1.45),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  _statBadge('帖子', '${_posts.length}'),
+                                  const SizedBox(width: 10),
+                                  GlassActionButton(
+                                    icon: Icons.edit_rounded,
+                                    label: '发布新帖子',
+                                    onTap: _openComposer,
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                      )
-                    else
-                      ..._posts.map((post) {
-                        final author = '${post['authorName'] ?? '病友'}';
-                        final role = _roleText(
-                          '${post['authorRole'] ?? 'PATIENT'}',
-                        );
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: FrostPanel(
-                            child: InkWell(
-                              onTap: () => _openDetail(post),
-                              borderRadius: BorderRadius.circular(24),
+                        const SizedBox(height: 14),
+                        // 最新讨论标题
+                        const FrostPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SectionTitle(
+                                title: '最新讨论',
+                                subtitle: '从饮食、血糖、运动到心态调整，大家都可以在这里继续聊。',
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_posts.isEmpty)
+                          FrostPanel(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 28),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 42,
-                                        height: 42,
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          color: const Color(0xFFEAF1FF),
-                                        ),
-                                        child: const Icon(
-                                          Icons.forum_rounded,
-                                          color: Color(0xFF4677C8),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              author,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                color: Color(0xFF173836),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              '$role · ${_fmtTime(post['createdAt'])}',
-                                              style: const TextStyle(
-                                                color: Color(0xFF6D8481),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const Icon(Icons.chevron_right_rounded),
-                                    ],
+                                  Container(
+                                    width: 70,
+                                    height: 70,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEAF1FF),
+                                      borderRadius: BorderRadius.circular(22),
+                                    ),
+                                    child: const Icon(Icons.forum_outlined, color: Color(0xFF4375C8), size: 36),
                                   ),
                                   const SizedBox(height: 14),
-                                  Text(
-                                    '${post['content'] ?? ''}',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      height: 1.45,
-                                      color: Color(0xFF203A38),
+                                  const Text(
+                                    '还没有帖子',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      color: Color(0xFF2D3748),
                                     ),
                                   ),
-                                  const SizedBox(height: 14),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      SoftStatPill(
-                                        text: '评论 ${post['commentCount'] ?? 0}',
-                                        bg: const Color(0xFFEAF1FF),
-                                        fg: const Color(0xFF355EA0),
-                                      ),
-                                      const SoftStatPill(text: '点开查看详情'),
-                                    ],
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    '来发第一条帖子，开启社区讨论吧',
+                                    style: TextStyle(color: Color(0xFF5A7673)),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  GlassActionButton(
+                                    icon: Icons.rate_review_rounded,
+                                    label: '发布第一条帖子',
+                                    onTap: _openComposer,
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                        );
-                      }),
-                  ],
-                ),
-              ),
+                          )
+                        else
+                          ..._posts.map((post) {
+                            final authorName = '${post['authorName'] ?? '匿名用户'}';
+                            final roleKey = '${post['authorRole'] ?? 'PATIENT'}';
+                            final role = _roleText(roleKey);
+                            final roleColor = _roleColor(roleKey);
+                            final roleBg = _roleBg(roleKey);
+                            final content = '${post['content'] ?? ''}';
+                            final commentCount = post['commentCount'] ?? 0;
+                            final preview = content.length > 80
+                                ? '${content.substring(0, 80)}…'
+                                : content;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: FrostPanel(
+                                child: InkWell(
+                                  onTap: () => _openDetail(post),
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // 作者行
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 20,
+                                            backgroundColor: const Color(0xFFEAF1FF),
+                                            child: Text(
+                                              authorName.isEmpty ? '?' : authorName.characters.first,
+                                              style: const TextStyle(
+                                                color: Color(0xFF4375C8),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  authorName,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    color: Color(0xFF1A202C),
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Row(
+                                                  children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: roleBg,
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: Text(
+                                                        role,
+                                                        style: TextStyle(
+                                                          color: roleColor,
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      _fmtTime(post['createdAt']),
+                                                      style: const TextStyle(
+                                                        color: Color(0xFF718096),
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const Icon(Icons.chevron_right_rounded, color: Color(0xFFBDBDBD)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // 内容预览
+                                      Text(
+                                        preview,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          height: 1.55,
+                                          color: Color(0xFF2D3748),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // 底部操作栏
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.chat_bubble_outline_rounded, size: 15, color: Color(0xFF718096)),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '$commentCount 条评论',
+                                            style: const TextStyle(color: Color(0xFF718096), fontSize: 12),
+                                          ),
+                                          const Spacer(),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFEAF1FF),
+                                              borderRadius: BorderRadius.circular(20),
+                                            ),
+                                            child: const Text(
+                                              '查看详情 →',
+                                              style: TextStyle(
+                                                color: Color(0xFF4375C8),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+      ),
+    );
+  }
+
+  Widget _statBadge(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// 发帖页
+// ─────────────────────────────────────────────────────────────
 class _CommunityComposerScreen extends StatefulWidget {
   const _CommunityComposerScreen();
 
   @override
-  State<_CommunityComposerScreen> createState() =>
-      _CommunityComposerScreenState();
+  State<_CommunityComposerScreen> createState() => _CommunityComposerScreenState();
 }
 
 class _CommunityComposerScreenState extends State<_CommunityComposerScreen> {
   final TextEditingController _controller = TextEditingController();
+  int _charCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      setState(() => _charCount = _controller.text.length);
+    });
+  }
 
   @override
   void dispose() {
@@ -364,7 +482,34 @@ class _CommunityComposerScreenState extends State<_CommunityComposerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('发布帖子')),
+      appBar: AppBar(
+        title: const Text('发布帖子'),
+        leading: TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton(
+              onPressed: _charCount == 0
+                  ? null
+                  : () {
+                      final content = _controller.text.trim();
+                      if (content.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('帖子内容不能为空')),
+                        );
+                        return;
+                      }
+                      Navigator.of(context).pop(content);
+                    },
+              style: FilledButton.styleFrom(minimumSize: const Size(64, 36)),
+              child: const Text('发布'),
+            ),
+          ),
+        ],
+      ),
       body: HealthPageBackground(
         topTint: const Color(0xFFDCEFFC),
         bottomTint: const Color(0xFFF6F8FB),
@@ -380,30 +525,80 @@ class _CommunityComposerScreenState extends State<_CommunityComposerScreen> {
             ),
             const SizedBox(height: 12),
             FrostPanel(
-              child: TextField(
-                controller: _controller,
-                maxLines: 10,
-                minLines: 8,
-                decoration: const InputDecoration(
-                  hintText: '例如：今天早餐我把白米饭换成了燕麦和鸡蛋，餐后感觉稳定很多…',
-                  border: InputBorder.none,
-                  filled: false,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  TextField(
+                    controller: _controller,
+                    maxLines: 12,
+                    minLines: 8,
+                    maxLength: 500,
+                    decoration: const InputDecoration(
+                      hintText: '例如：今天早餐我把白米饭换成了燕麦和鸡蛋，餐后感觉稳定很多，分享给大家…',
+                      border: InputBorder.none,
+                      filled: false,
+                      counterText: '',
+                    ),
+                  ),
+                  Text(
+                    '$_charCount / 500',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _charCount > 480 ? const Color(0xFFC53A2E) : const Color(0xFF9AA8A6),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                final content = _controller.text.trim();
-                if (content.isEmpty) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('帖子内容不能为空')));
-                  return;
-                }
-                Navigator.of(context).pop(content);
-              },
-              child: const Text('确认发布'),
+            // 话题提示
+            FrostPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '可以聊的话题',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2D3748), fontSize: 13),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      '饮食控糖经验',
+                      '运动心得',
+                      '用药建议',
+                      '血糖监测技巧',
+                      '心态调整',
+                      '求助提问',
+                    ].map((tag) => InkWell(
+                      onTap: () {
+                        final text = _controller.text;
+                        _controller.text = text.isEmpty ? '#$tag ' : '$text #$tag ';
+                        _controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _controller.text.length),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF1FF),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '# $tag',
+                          style: const TextStyle(
+                            color: Color(0xFF4375C8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -412,22 +607,24 @@ class _CommunityComposerScreenState extends State<_CommunityComposerScreen> {
   }
 }
 
-class _CommunityPostDetailScreen extends StatefulWidget {
-  const _CommunityPostDetailScreen({required this.post});
+// ─────────────────────────────────────────────────────────────
+// 帖子详情页（完整 UI）
+// ─────────────────────────────────────────────────────────────
+class CommunityPostDetailScreen extends StatefulWidget {
+  const CommunityPostDetailScreen({super.key, required this.post});
 
   final Map<String, dynamic> post;
 
   @override
-  State<_CommunityPostDetailScreen> createState() =>
-      _CommunityPostDetailScreenState();
+  State<CommunityPostDetailScreen> createState() => _CommunityPostDetailScreenState();
 }
 
-class _CommunityPostDetailScreenState
-    extends State<_CommunityPostDetailScreen> {
+class _CommunityPostDetailScreenState extends State<CommunityPostDetailScreen> {
   bool _loading = true;
   bool _saving = false;
   List<Map<String, dynamic>> _comments = [];
   final TextEditingController _ctrl = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
@@ -438,10 +635,12 @@ class _CommunityPostDetailScreenState
   @override
   void dispose() {
     _ctrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   Future<void> _loadComments() async {
+    setState(() => _loading = true);
     try {
       final res = await ApiService.get(
         '/community/posts/${widget.post['id']}/comments',
@@ -468,15 +667,13 @@ class _CommunityPostDetailScreenState
         'content': text,
       });
       _ctrl.clear();
-      FocusScope.of(context).unfocus();
+      _focusNode.unfocus();
       await _loadComments();
       if (!mounted) return;
       AppToast.success(context, '评论已发送');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -502,7 +699,17 @@ class _CommunityPostDetailScreenState
     if (value is String) {
       final dt = DateTime.tryParse(value);
       if (dt != null) {
-        return DateFormat('MM-dd HH:mm').format(dt.toLocal());
+        return DateFormat('yyyy年MM月dd日 HH:mm').format(dt.toLocal());
+      }
+    }
+    return '--';
+  }
+
+  String _fmtShort(dynamic value) {
+    if (value is String) {
+      final dt = DateTime.tryParse(value);
+      if (dt != null) {
+        return DateFormat('MM月dd日 HH:mm').format(dt.toLocal());
       }
     }
     return '--';
@@ -521,119 +728,434 @@ class _CommunityPostDetailScreenState
     }
   }
 
+  Color _roleColor(String raw) {
+    switch (raw) {
+      case 'DOCTOR':
+        return const Color(0xFF2B6CB0);
+      case 'FAMILY':
+        return const Color(0xFF276749);
+      case 'ADMIN':
+        return const Color(0xFF744210);
+      default:
+        return const Color(0xFF4A5568);
+    }
+  }
+
+  Color _roleBg(String raw) {
+    switch (raw) {
+      case 'DOCTOR':
+        return const Color(0xFFEBF8FF);
+      case 'FAMILY':
+        return const Color(0xFFF0FFF4);
+      case 'ADMIN':
+        return const Color(0xFFFFFBEB);
+      default:
+        return const Color(0xFFEDF2F7);
+    }
+  }
+
+  Color _avatarBg(String raw) {
+    switch (raw) {
+      case 'DOCTOR':
+        return const Color(0xFFBEE3F8);
+      case 'FAMILY':
+        return const Color(0xFFC6F6D5);
+      case 'ADMIN':
+        return const Color(0xFFFEF3C7);
+      default:
+        return const Color(0xFFE2E8F0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final author = '${widget.post['authorName'] ?? '病友'}';
-    final role = _roleText('${widget.post['authorRole'] ?? 'PATIENT'}');
+    final authorName = '${widget.post['authorName'] ?? '匿名用户'}';
+    final roleKey = '${widget.post['authorRole'] ?? 'PATIENT'}';
+    final role = _roleText(roleKey);
+    final roleColor = _roleColor(roleKey);
+    final roleBg = _roleBg(roleKey);
+    final avatarBg = _avatarBg(roleKey);
+    final content = '${widget.post['content'] ?? ''}';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('讨论详情')),
+      appBar: AppBar(
+        title: const Text('讨论详情'),
+        centerTitle: true,
+      ),
       body: HealthPageBackground(
         topTint: const Color(0xFFDCEFFC),
         bottomTint: const Color(0xFFF6F8FB),
         accent: const Color(0xFFFFE8D8),
         child: Column(
           children: [
+            // ── 帖子内容 + 评论列表 ──
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                 children: [
+                  // 帖子主体卡片
                   FrostPanel(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          author,
+                        // 作者信息
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: avatarBg,
+                              child: Text(
+                                authorName.isEmpty ? '?' : authorName.characters.first,
+                                style: TextStyle(
+                                  color: roleColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    authorName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      color: Color(0xFF1A202C),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: roleBg,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          role,
+                                          style: TextStyle(
+                                            color: roleColor,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _fmtTime(widget.post['createdAt']),
+                                        style: const TextStyle(color: Color(0xFF718096), fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // 分割线
+                        Container(
+                          height: 1,
+                          color: const Color(0xFFE2E8F0),
+                        ),
+                        const SizedBox(height: 16),
+                        // 正文
+                        SelectableText(
+                          content,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF173836),
+                            fontSize: 15,
+                            height: 1.75,
+                            color: Color(0xFF2D3748),
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '$role · ${_fmtTime(widget.post['createdAt'])}',
-                          style: const TextStyle(color: Color(0xFF6D8481)),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          '${widget.post['content'] ?? ''}',
-                          style: const TextStyle(height: 1.5, fontSize: 15),
+                        const SizedBox(height: 16),
+                        // 底部统计
+                        Row(
+                          children: [
+                            const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF718096)),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_comments.length} 条评论',
+                              style: const TextStyle(color: Color(0xFF718096), fontSize: 13),
+                            ),
+                            const Spacer(),
+                            InkWell(
+                              onTap: () => _focusNode.requestFocus(),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEAF1FF),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 14, color: Color(0xFF4375C8)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '写评论',
+                                      style: TextStyle(
+                                        color: Color(0xFF4375C8),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const FrostPanel(
-                    child: SectionTitle(
-                      title: '评论区',
-                      subtitle: '大家可以继续在这里跟帖讨论。',
-                    ),
+                  const SizedBox(height: 16),
+                  // 评论区标题
+                  Row(
+                    children: [
+                      const Icon(Icons.forum_rounded, size: 18, color: Color(0xFF4375C8)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '评论区 (${_comments.length})',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: Color(0xFF2D3748),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+                  // 评论列表
                   if (_loading)
-                    const Center(child: CircularProgressIndicator())
-                  else if (_comments.isEmpty)
-                    const FrostPanel(
+                    const Center(
                       child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: Text('还没有评论，来聊聊吧')),
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (_comments.isEmpty)
+                    FrostPanel(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAF1FF),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: const Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                color: Color(0xFF4375C8),
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              '还没有评论',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF2D3748),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              '来第一个发表评论吧',
+                              style: TextStyle(color: Color(0xFF718096), fontSize: 13),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   else
-                    ..._comments.map((comment) {
-                      final cAuthor = '${comment['authorName'] ?? '病友'}';
-                      final cRole = _roleText(
-                        '${comment['authorRole'] ?? 'PATIENT'}',
-                      );
+                    ..._comments.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final comment = entry.value;
+                      final cAuthorName = '${comment['authorName'] ?? '匿名用户'}';
+                      final cRoleKey = '${comment['authorRole'] ?? 'PATIENT'}';
+                      final cRole = _roleText(cRoleKey);
+                      final cRoleColor = _roleColor(cRoleKey);
+                      final cRoleBg = _roleBg(cRoleKey);
+                      final cAvatarBg = _avatarBg(cRoleKey);
+
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: FrostPanel(
-                          child: Column(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                cAuthor,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                              // 楼层序号 + 头像
+                              Column(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: cAvatarBg,
+                                    child: Text(
+                                      cAuthorName.isEmpty ? '?' : cAuthorName.characters.first,
+                                      style: TextStyle(
+                                        color: cRoleColor,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '#${i + 1}',
+                                    style: const TextStyle(
+                                      color: Color(0xFFBDBDBD),
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          cAuthorName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                            color: Color(0xFF1A202C),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: cRoleBg,
+                                            borderRadius: BorderRadius.circular(5),
+                                          ),
+                                          child: Text(
+                                            cRole,
+                                            style: TextStyle(
+                                              color: cRoleColor,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '${comment['content'] ?? ''}',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        height: 1.55,
+                                        color: Color(0xFF2D3748),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _fmtShort(comment['createdAt']),
+                                      style: const TextStyle(
+                                        color: Color(0xFF9AA8A6),
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$cRole · ${_fmtTime(comment['createdAt'])}',
-                                style: const TextStyle(
-                                  color: Color(0xFF6D8481),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text('${comment['content'] ?? ''}'),
                             ],
                           ),
                         ),
                       );
                     }),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
+
+            // ── 底部评论输入栏 ──
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.9),
+                border: Border(
+                  top: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                MediaQuery.of(context).viewInsets.bottom > 0
+                    ? MediaQuery.of(context).viewInsets.bottom + 10
+                    : MediaQuery.of(context).padding.bottom + 10,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FAFC),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
                       child: TextField(
                         controller: _ctrl,
-                        decoration: const InputDecoration(hintText: '写下你的评论'),
+                        focusNode: _focusNode,
                         minLines: 1,
-                        maxLines: 3,
+                        maxLines: 4,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: const InputDecoration(
+                          hintText: '写下你的看法或建议…',
+                          hintStyle: TextStyle(color: Color(0xFFBDBDBD)),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          filled: false,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    FilledButton(
+                  ),
+                  const SizedBox(width: 10),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: FilledButton(
                       onPressed: _saving ? null : _sendComment,
-                      child: const Text('发送'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(52, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        backgroundColor: const Color(0xFF4375C8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                      ),
+                      child: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.send_rounded, size: 18),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],

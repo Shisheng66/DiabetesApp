@@ -106,10 +106,15 @@ class _DietScreenState extends State<DietScreen> {
         '/diet/meal-plans',
         query: {'date': d},
       );
-      final analysisRes = await ApiService.get(
-        '/diet/analysis/daily',
-        query: {'date': d},
-      );
+      Map<String, dynamic>? analysisRes;
+      try {
+        analysisRes = await ApiService.get(
+          '/diet/analysis/daily',
+          query: {'date': d},
+        );
+      } catch (_) {
+        analysisRes = null;
+      }
 
       final rows = _list(recordsRes).map(_map).toList()
         ..sort(

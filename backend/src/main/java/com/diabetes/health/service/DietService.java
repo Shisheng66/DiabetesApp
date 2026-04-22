@@ -536,10 +536,14 @@ public class DietService {
 
     private Map<Long, FoodNutrition> loadFoods(List<Long> foodIds) {
         Map<Long, FoodNutrition> result = new HashMap<>();
-        if (foodIds.isEmpty()) {
+        List<Long> safeFoodIds = foodIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (safeFoodIds.isEmpty()) {
             return result;
         }
-        foodNutritionRepository.findAllById(foodIds)
+        foodNutritionRepository.findAllById(safeFoodIds)
                 .forEach(food -> result.put(food.getId(), food));
         return result;
     }

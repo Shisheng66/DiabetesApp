@@ -1,11 +1,11 @@
 {
-    "name": "new_app",
-    "short_name": "new_app",
+    "name": "糖尿病健康管家",
+    "short_name": "健康管家",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F4F8F7",
+    "theme_color": "#0B8A7D",
+    "description": "糖尿病健康管理、血糖记录、饮食营养和运动建议工具。",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -18,10 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.*;
 import java.util.ArrayList;
+import java.util.DoubleSummaryStatistics;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -190,13 +195,7 @@ public class BloodGlucoseService {
         Instant start = weekStart.atStartOfDay(APP_ZONE).toInstant();
         Instant end = weekStart.plusWeeks(1).atStartOfDay(APP_ZONE).toInstant();
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
-        List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
-        for (BloodGlucoseRecord r : list) {
-            BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
-            p.setTime(r.getMeasureTime().atZone(APP_ZONE).toLocalDate().toString());
-            p.setValue(r.getValueMmolL());
-            points.add(p);
-        }
+        List<BloodGlucoseDto.TrendPoint> points = aggregateByDate(list);
         BloodGlucoseDto.TrendResponse res = new BloodGlucoseDto.TrendResponse();
         res.setPeriodType("weekly");
         res.setPoints(points);
@@ -209,13 +208,7 @@ public class BloodGlucoseService {
         Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
         Instant end = endDate.atStartOfDay(APP_ZONE).toInstant();
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
-        List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
-        for (BloodGlucoseRecord r : list) {
-            BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
-            p.setTime(r.getMeasureTime().atZone(APP_ZONE).toLocalDate().toString());
-            p.setValue(r.getValueMmolL());
-            points.add(p);
-        }
+        List<BloodGlucoseDto.TrendPoint> points = aggregateByDate(list);
         BloodGlucoseDto.TrendResponse res = new BloodGlucoseDto.TrendResponse();
         res.setPeriodType("monthly");
         res.setPoints(points);
@@ -259,5 +252,23 @@ public class BloodGlucoseService {
             return new BigDecimal("7.8");
         }
         return new BigDecimal("6.1");
+    }
+
+    private List<BloodGlucoseDto.TrendPoint> aggregateByDate(List<BloodGlucoseRecord> records) {
+        Map<LocalDate, DoubleSummaryStatistics> byDate = records.stream()
+                .collect(Collectors.groupingBy(
+                        record -> record.getMeasureTime().atZone(APP_ZONE).toLocalDate(),
+                        TreeMap::new,
+                        Collectors.summarizingDouble(record -> record.getValueMmolL().doubleValue())
+                ));
+
+        return byDate.entrySet().stream()
+                .map(entry -> {
+                    BloodGlucoseDto.TrendPoint point = new BloodGlucoseDto.TrendPoint();
+                    point.setTime(entry.getKey().toString());
+                    point.setValue(BigDecimal.valueOf(entry.getValue().getAverage()).setScale(2, RoundingMode.HALF_UP));
+                    return point;
+                })
+                .toList();
     }
 }

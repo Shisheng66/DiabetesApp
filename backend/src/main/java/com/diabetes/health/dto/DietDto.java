@@ -30,6 +30,17 @@ public class DietDto {
     }
 
     @Data
+    public static class UpdateRecordRequest {
+        private LocalDate recordDate;
+        private Instant recordTime;
+        private String mealType;
+        private Long foodId;
+        @DecimalMin(value = "0.01", message = "克数必须大于 0")
+        private BigDecimal amountG;
+        private String remark;
+    }
+
+    @Data
     public static class CreateFoodRequest {
         @NotBlank(message = "食物名称不能为空")
         private String name;

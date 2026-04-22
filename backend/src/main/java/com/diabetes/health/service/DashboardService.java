@@ -42,8 +42,8 @@ public class DashboardService {
 
         List<BloodGlucoseRecord> glucoseRecords = bloodGlucoseRecordRepository
                 .findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
-        List<DietRecord> dietRecords = dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), today);
-        List<ExerciseRecord> exerciseRecords = exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end);
+        List<DietRecord> dietRecords = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), today);
+        List<ExerciseRecord> exerciseRecords = exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end);
         List<HealthReminder> remindersFromDb = healthReminderRepository.findByUserIdAndEnabledTrueOrderByTimeOfDayAsc(user.getId());
 
         DashboardDto.TodayResponse response = new DashboardDto.TodayResponse();

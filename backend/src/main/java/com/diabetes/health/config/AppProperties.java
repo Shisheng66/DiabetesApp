@@ -47,7 +47,7 @@ public class AppProperties {
         /**
          * 是否允许凭证
          */
-        private Boolean allowCredentials = true;
+        private Boolean allowCredentials = false;
 
         /**
          * 预检请求缓存时间

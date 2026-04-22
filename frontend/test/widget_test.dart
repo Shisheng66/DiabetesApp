@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:new_app/widgets/premium_health_ui.dart';
+import 'package:diabetes_health/widgets/premium_health_ui.dart';
 
 void main() {
   testWidgets('HealthPageBackground renders child content', (
@@ -20,3 +20,4 @@ void main() {
     expect(find.byType(FrostPanel), findsNothing);
   });
 }
+

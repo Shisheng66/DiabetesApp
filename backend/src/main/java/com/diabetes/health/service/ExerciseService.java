@@ -23,7 +23,9 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -74,22 +76,25 @@ public class ExerciseService {
         if (startDate != null && endDate != null) {
             Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
-            List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end);
+            List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end);
+            Map<Long, String> typeNames = loadExerciseTypeNames();
             return list.stream()
-                    .map(record -> toRecordResponse(record, resolveExerciseName(record.getExerciseTypeId())))
+                    .map(record -> toRecordResponse(record, typeNames.getOrDefault(record.getExerciseTypeId(), "运动")))
                     .toList();
         }
 
-        List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdOrderByStartTimeDesc(user.getId(), PageRequest.of(page, size));
+        List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndDeletedFalseOrderByStartTimeDesc(user.getId(), PageRequest.of(page, size));
+        Map<Long, String> typeNames = loadExerciseTypeNames();
         return list.stream()
-                .map(record -> toRecordResponse(record, resolveExerciseName(record.getExerciseTypeId())))
+                .map(record -> toRecordResponse(record, typeNames.getOrDefault(record.getExerciseTypeId(), "运动")))
                 .toList();
     }
 
     public ExerciseDto.DailySummaryResponse getDailySummary(CurrentUser user, LocalDate date) {
         Instant start = date.atStartOfDay(APP_ZONE).toInstant();
         Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
-        List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end);
+        List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end);
+        Map<Long, String> typeNames = loadExerciseTypeNames();
 
         ExerciseDto.DailySummaryResponse response = new ExerciseDto.DailySummaryResponse();
         response.setDate(date.toString());
@@ -99,7 +104,7 @@ public class ExerciseService {
                 .sum());
         response.setTotalCalorieKcal(sum(list.stream().map(ExerciseRecord::getCalorieKcal).toList()));
         response.setRecords(list.stream()
-                .map(record -> toRecordResponse(record, resolveExerciseName(record.getExerciseTypeId())))
+                .map(record -> toRecordResponse(record, typeNames.getOrDefault(record.getExerciseTypeId(), "运动")))
                 .toList());
         return response;
     }
@@ -107,12 +112,13 @@ public class ExerciseService {
     @Transactional
     @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
-        ExerciseRecord record = exerciseRecordRepository.findById(id)
+        ExerciseRecord record = exerciseRecordRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运动记录不存在"));
         if (!record.getUserId().equals(user.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权删除该记录");
         }
-        exerciseRecordRepository.delete(record);
+        record.setDeleted(true);
+        exerciseRecordRepository.save(record);
     }
 
     public List<ExerciseDto.TypeResponse> listExerciseTypes() {
@@ -120,14 +126,14 @@ public class ExerciseService {
     }
 
     public ExerciseDto.DailyRecommendationResponse getDailyRecommendation(CurrentUser user, LocalDate date) {
-        BigDecimal intake = sum(dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), date)
+        BigDecimal intake = sum(dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date)
                 .stream()
                 .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
                 .toList());
 
         Instant start = date.atStartOfDay(APP_ZONE).toInstant();
         Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
-        BigDecimal burned = sum(exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end)
+        BigDecimal burned = sum(exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end)
                 .stream()
                 .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
                 .toList());
@@ -187,10 +193,12 @@ public class ExerciseService {
                 .orElse(new BigDecimal("65"));
     }
 
-    private String resolveExerciseName(Long exerciseTypeId) {
-        return exerciseTypeRepository.findById(exerciseTypeId)
-                .map(ExerciseType::getName)
-                .orElse("运动");
+    private Map<Long, String> loadExerciseTypeNames() {
+        Map<Long, String> result = new HashMap<>();
+        for (ExerciseType type : exerciseTypeRepository.findAll()) {
+            result.put(type.getId(), type.getName());
+        }
+        return result;
     }
 
     private BigDecimal sum(List<BigDecimal> values) {

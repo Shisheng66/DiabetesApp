@@ -4,14 +4,10 @@ import 'dart:io';
 class ApiConfig {
   static const String apiPrefix = '/api';
   static const String buildTimeBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const String devLanBaseUrls = String.fromEnvironment(
+    'DEV_LAN_BASE_URLS',
+  );
   static const bool isProduction = bool.fromEnvironment('dart.vm.product');
-
-  /// Add common LAN candidates that this project often runs on.
-  static const List<String> lanBaseUrls = [
-    'http://192.168.17.109:8080',
-    'http://192.168.190.138:8080',
-    'http://192.168.190.108:8080',
-  ];
 
   static List<String> get baseUrlCandidates {
     if (isProduction) {
@@ -34,7 +30,12 @@ class ApiConfig {
       candidates.add('http://localhost:8080');
     }
 
-    candidates.addAll(lanBaseUrls);
+    candidates.addAll(
+      devLanBaseUrls
+          .split(',')
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty),
+    );
     return candidates.toSet().toList(growable: false);
   }
 

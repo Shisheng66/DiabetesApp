@@ -32,5 +32,6 @@ logging:
 
 app:
   jwt:
-    secret: test-secret-key-for-unit-testing-purpose-only-32chars
+    secret: ${JWT_SECRET:test-secret-key-for-unit-testing-purpose-only-32chars}
     expiration-seconds: 3600  # 1 hour
+

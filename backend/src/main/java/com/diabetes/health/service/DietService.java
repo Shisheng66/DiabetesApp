@@ -92,10 +92,10 @@ public class DietService {
     public List<DietDto.RecordResponse> listByDate(CurrentUser user, LocalDate date, String mealType) {
         List<DietRecord> list;
         if (mealType != null && !mealType.isBlank()) {
-            list = dietRecordRepository.findByUserIdAndRecordDateAndMealTypeOrderByRecordTimeDesc(
+            list = dietRecordRepository.findByUserIdAndRecordDateAndMealTypeAndDeletedFalseOrderByRecordTimeDesc(
                     user.getId(), date, parseMealType(mealType));
         } else {
-            list = dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), date);
+            list = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date);
         }
 
         Map<Long, FoodNutrition> foods = loadFoods(list.stream().map(DietRecord::getFoodId).toList());
@@ -106,7 +106,7 @@ public class DietService {
     }
 
     public DietDto.DailySummaryResponse getDailySummary(CurrentUser user, LocalDate date) {
-        List<DietRecord> list = dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), date);
+        List<DietRecord> list = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date);
         Map<Long, FoodNutrition> foods = loadFoods(list.stream().map(DietRecord::getFoodId).toList());
 
         BigDecimal totalCal = sum(list.stream().map(DietRecord::getCalorieKcal).toList());
@@ -128,7 +128,7 @@ public class DietService {
     }
 
     public DietDto.NutritionAnalysisResponse getDailyNutritionAnalysis(CurrentUser user, LocalDate date) {
-        List<DietRecord> records = dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(user.getId(), date);
+        List<DietRecord> records = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date);
         Map<Long, FoodNutrition> foods = loadFoods(records.stream().map(DietRecord::getFoodId).toList());
 
         BigDecimal totalCalorie = sum(records.stream().map(DietRecord::getCalorieKcal).toList());
@@ -228,12 +228,47 @@ public class DietService {
     @Transactional
     @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
-        DietRecord record = dietRecordRepository.findById(id)
+        DietRecord record = dietRecordRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "饮食记录不存在"));
         if (!record.getUserId().equals(user.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权删除该记录");
         }
-        dietRecordRepository.delete(record);
+        record.setDeleted(true);
+        dietRecordRepository.save(record);
+    }
+
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
+    public DietDto.RecordResponse update(CurrentUser user, Long id, DietDto.UpdateRecordRequest request) {
+        DietRecord record = dietRecordRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "饮食记录不存在"));
+        if (!record.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权修改该记录");
+        }
+
+        Long foodId = request.getFoodId() != null ? request.getFoodId() : record.getFoodId();
+        FoodNutrition food = findAccessibleFood(user.getId(), foodId);
+        BigDecimal amount = request.getAmountG() != null ? request.getAmountG() : record.getAmountG();
+        BigDecimal ratio = amount.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+
+        if (request.getRecordDate() != null) {
+            record.setRecordDate(request.getRecordDate());
+        }
+        if (request.getRecordTime() != null) {
+            record.setRecordTime(request.getRecordTime());
+        }
+        if (request.getMealType() != null && !request.getMealType().isBlank()) {
+            record.setMealType(parseMealType(request.getMealType()));
+        }
+        record.setFoodId(food.getId());
+        record.setAmountG(amount);
+        record.setCalorieKcal(scale(food.getCalorieKcalPer100g(), ratio));
+        record.setCarbG(scale(food.getCarbGPer100g(), ratio));
+        record.setProteinG(scale(food.getProteinGPer100g(), ratio));
+        record.setFatG(scale(food.getFatGPer100g(), ratio));
+        record.setRemark(request.getRemark());
+
+        return toRecordResponse(dietRecordRepository.save(record), food.getName());
     }
 
     public DietDto.PageResult<DietDto.FoodItemResponse> searchFoods(CurrentUser user, String keyword, int page, int size) {

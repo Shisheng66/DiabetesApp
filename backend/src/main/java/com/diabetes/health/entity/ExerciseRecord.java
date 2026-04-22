@@ -52,6 +52,10 @@ public class ExerciseRecord {
     @Column(length = 200)
     private String remark;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

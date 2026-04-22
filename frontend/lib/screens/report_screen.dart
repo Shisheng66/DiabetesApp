@@ -136,8 +136,12 @@ class _ReportScreenState extends State<ReportScreen> {
     final boundary =
         _captureKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
-    if (boundary == null) {
-      throw Exception('capture not ready');
+    if (boundary == null || !boundary.hasSize) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('报告页面未完全加载，请稍后再试')));
+      return;
     }
 
     final image = await boundary.toImage(pixelRatio: 2.8);

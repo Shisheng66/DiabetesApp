@@ -53,6 +53,14 @@ public class DietController {
         dietService.delete(user, id);
     }
 
+    @PutMapping("/records/{id}")
+    public DietDto.RecordResponse update(
+            @AuthenticationPrincipal CurrentUser user,
+            @PathVariable Long id,
+            @Valid @RequestBody DietDto.UpdateRecordRequest request) {
+        return dietService.update(user, id, request);
+    }
+
     @GetMapping("/foods")
     public DietDto.PageResult<DietDto.FoodItemResponse> searchFoods(
             @AuthenticationPrincipal CurrentUser user,

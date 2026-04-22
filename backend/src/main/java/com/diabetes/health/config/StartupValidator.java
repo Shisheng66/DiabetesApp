@@ -3,7 +3,10 @@ package com.diabetes.health.config;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
 
 /**
  * 配置验证器 - 在应用启动时验证关键配置
@@ -18,6 +21,8 @@ public class StartupValidator {
 
     private final JwtProperties jwtProperties;
     private final AppProperties appProperties;
+    private final AuthVerificationProperties authVerificationProperties;
+    private final Environment environment;
 
     @PostConstruct
     public void validate() {
@@ -28,6 +33,9 @@ public class StartupValidator {
         
         // 验证应用配置
         validateAppConfig();
+
+        // 验证认证配置
+        validateAuthConfig();
         
         log.info("配置验证通过！");
     }
@@ -61,5 +69,14 @@ public class StartupValidator {
         }
         
         log.debug("✓ 应用配置验证通过");
+    }
+
+    private void validateAuthConfig() {
+        boolean prod = Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        if (prod && authVerificationProperties.isExposeDebugSmsCode()) {
+            throw new IllegalStateException("生产环境禁止开启 expose-debug-sms-code");
+        }
+
+        log.debug("✓ 认证配置验证通过");
     }
 }

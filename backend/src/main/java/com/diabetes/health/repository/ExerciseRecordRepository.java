@@ -5,10 +5,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface ExerciseRecordRepository extends JpaRepository<ExerciseRecord, Long> {
 
-    List<ExerciseRecord> findByUserIdOrderByStartTimeDesc(Long userId, org.springframework.data.domain.Pageable pageable);
+    Optional<ExerciseRecord> findByIdAndDeletedFalse(Long id);
 
-    List<ExerciseRecord> findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(Long userId, Instant start, Instant end);
+    List<ExerciseRecord> findByUserIdAndDeletedFalseOrderByStartTimeDesc(Long userId, org.springframework.data.domain.Pageable pageable);
+
+    List<ExerciseRecord> findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(Long userId, Instant start, Instant end);
 }

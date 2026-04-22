@@ -280,22 +280,21 @@ class _DietScreenState extends State<DietScreen> {
                   }
                   try {
                     if (isEdit) {
-                      // 删旧建新（后端无 PATCH，先删再加）
-                      await ApiService.delete(
+                      await ApiService.put(
                         '/diet/records/${editRecord['id']}',
+                        {
+                          'recordDate': DateFormat('yyyy-MM-dd').format(_date),
+                          'recordTime':
+                              editRecord['recordTime'] ??
+                              DateTime.now().toUtc().toIso8601String(),
+                          'mealType': mealType,
+                          'foodId': selectedFood,
+                          'amountG': amount,
+                          'remark': remarkCtrl.text.trim().isEmpty
+                              ? null
+                              : remarkCtrl.text.trim(),
+                        },
                       );
-                      await ApiService.post('/diet/records', {
-                        'recordDate': DateFormat('yyyy-MM-dd').format(_date),
-                        'recordTime':
-                            editRecord['recordTime'] ??
-                            DateTime.now().toUtc().toIso8601String(),
-                        'mealType': mealType,
-                        'foodId': selectedFood,
-                        'amountG': amount,
-                        'remark': remarkCtrl.text.trim().isEmpty
-                            ? null
-                            : remarkCtrl.text.trim(),
-                      });
                     } else {
                       await ApiService.post('/diet/records', {
                         'recordDate': DateFormat('yyyy-MM-dd').format(_date),

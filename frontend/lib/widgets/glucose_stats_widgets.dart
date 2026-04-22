@@ -187,9 +187,9 @@ class TirCard extends StatelessWidget {
 }
 
 /// HbA1c 估算 Banner
-/// 传入 [avgGlucose] 近90天平均血糖值（mmol/L）
+/// 传入当前统计窗口的平均血糖值（mmol/L）。
 class HbA1cBanner extends StatelessWidget {
-  const HbA1cBanner({super.key, required this.avgGlucose, this.dayCount = 90});
+  const HbA1cBanner({super.key, required this.avgGlucose, this.dayCount = 1});
 
   final double avgGlucose;
   final int dayCount;
@@ -258,7 +258,7 @@ class HbA1cBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '基于近$dayCount天平均血糖 ${avgGlucose.toStringAsFixed(1)} mmol/L 估算，仅供参考，不能替代化验结果；请确保统计窗口与界面展示一致',
+                  '基于当前页面约$dayCount天统计窗口的平均血糖 ${avgGlucose.toStringAsFixed(1)} mmol/L 估算，仅供参考；正式 HbA1c 请以近3个月化验或长期均值为准',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF9AA8A6),

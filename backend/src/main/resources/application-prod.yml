@@ -25,7 +25,9 @@ spring:
     show-sql: false
 
   cache:
-    type: simple
+    type: caffeine
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s
 
 logging:
   level:

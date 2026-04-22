@@ -18,12 +18,14 @@ spring:
       database: ${REDIS_DATABASE:0}
       timeout: 2s
   cache:
-    type: simple
+    type: caffeine
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s
   jpa:
     properties:
       hibernate:
         format_sql: true
-    show-sql: true
+    show-sql: false
 
 server:
   port: 8080
@@ -36,4 +38,4 @@ app:
     captcha-expire-seconds: 180
     sms-expire-seconds: 300
     sms-cooldown-seconds: 60
-    expose-debug-sms-code: ${APP_AUTH_EXPOSE_DEBUG_SMS_CODE:true}
+    expose-debug-sms-code: ${APP_AUTH_EXPOSE_DEBUG_SMS_CODE:false}

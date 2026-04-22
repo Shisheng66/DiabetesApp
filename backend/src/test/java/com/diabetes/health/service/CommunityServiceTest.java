@@ -101,10 +101,10 @@ class CommunityServiceTest {
                         .liked(true)
                         .favorited(false)
                         .build()));
-        when(userAccountRepository.findById(1L)).thenReturn(Optional.of(
+        when(userAccountRepository.findAllById(List.of(1L))).thenReturn(List.of(
                 UserAccount.builder().id(1L).phone("13800138000").role(UserAccount.Role.PATIENT).build()
         ));
-        when(userHealthProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+        when(userHealthProfileRepository.findAllByUserIdIn(List.of(1L))).thenReturn(List.of());
 
         CommunityDto.PageResult<CommunityDto.PostResponse> result = communityService.listPosts(
                 new CurrentUser(1L, "13800138000", "PATIENT"),
@@ -200,10 +200,10 @@ class CommunityServiceTest {
                         .favorited(true)
                         .build())
         );
-        when(userAccountRepository.findById(2L)).thenReturn(Optional.of(
+        when(userAccountRepository.findAllById(List.of(2L))).thenReturn(List.of(
                 UserAccount.builder().id(2L).phone("13900001111").role(UserAccount.Role.PATIENT).build()
         ));
-        when(userHealthProfileRepository.findByUserId(2L)).thenReturn(Optional.empty());
+        when(userHealthProfileRepository.findAllByUserIdIn(List.of(2L))).thenReturn(List.of());
 
         CommunityDto.PageResult<CommunityDto.PostResponse> result = communityService.listFavoritedPosts(user, 0, 20);
 

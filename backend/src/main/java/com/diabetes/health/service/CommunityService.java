@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -276,12 +277,25 @@ public class CommunityService {
     }
 
     private Map<Long, AuthorSummary> loadAuthors(List<Long> userIds) {
-        Map<Long, AuthorSummary> result = new HashMap<>();
         if (userIds.isEmpty()) {
-            return result;
+            return Map.of();
         }
-        for (Long userId : userIds) {
-            result.putIfAbsent(userId, loadAuthor(userId));
+        List<Long> uniqueIds = userIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, UserAccount> accounts = userAccountRepository.findAllById(uniqueIds).stream()
+                .collect(Collectors.toMap(UserAccount::getId, account -> account));
+        Map<Long, UserHealthProfile> profiles = userHealthProfileRepository.findAllByUserIdIn(uniqueIds).stream()
+                .collect(Collectors.toMap(UserHealthProfile::getUserId, profile -> profile));
+
+        Map<Long, AuthorSummary> result = new HashMap<>();
+        for (Long userId : uniqueIds) {
+            result.put(userId, buildAuthorSummary(accounts.get(userId), profiles.get(userId)));
         }
         return result;
     }
@@ -316,6 +330,23 @@ public class CommunityService {
         } else if (account != null && account.getPhone() != null && account.getPhone().length() >= 4) {
             String phone = account.getPhone();
             authorName = "病友" + phone.substring(phone.length() - 4);
+        }
+
+        String authorRole = account == null || account.getRole() == null ? "PATIENT" : account.getRole().name();
+        String avatarUrl = profile == null ? null : profile.getAvatarUrl();
+        return new AuthorSummary(authorName, authorRole, avatarUrl);
+    }
+
+    private AuthorSummary buildAuthorSummary(UserAccount account, UserHealthProfile profile) {
+        Long userId = account == null ? (profile == null ? null : profile.getUserId()) : account.getId();
+        String authorName = "病友";
+        if (profile != null && profile.getNickname() != null && !profile.getNickname().isBlank()) {
+            authorName = profile.getNickname();
+        } else if (account != null && account.getPhone() != null && account.getPhone().length() >= 4) {
+            String phone = account.getPhone();
+            authorName = "病友" + phone.substring(phone.length() - 4);
+        } else if (userId != null) {
+            authorName = "病友" + userId;
         }
 
         String authorRole = account == null || account.getRole() == null ? "PATIENT" : account.getRole().name();

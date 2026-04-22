@@ -73,9 +73,9 @@ class ExerciseServiceTest {
                 .weightKg(new BigDecimal("70"))
                 .build();
 
-        when(dietRecordRepository.findByUserIdAndRecordDateOrderByRecordTimeDesc(1L, date))
+        when(dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(1L, date))
                 .thenReturn(List.of(breakfast, lunch));
-        when(exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(
+        when(exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(
                 org.mockito.ArgumentMatchers.eq(1L),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()))

@@ -159,10 +159,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ],
       ),
-      body: HealthPageBackground(
-        topTint: const Color(0xFFDCEFFC),
-        bottomTint: const Color(0xFFF6F8FB),
-        accent: const Color(0xFFFFE8D8),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFDCEFFC), Color(0xFFF6F8FB), Color(0xFFFFE8D8)],
+          ),
+        ),
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
@@ -183,6 +187,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 : RefreshIndicator(
                     onRefresh: _loadPosts,
                     child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
                       children: [
                         // 顶部横幅

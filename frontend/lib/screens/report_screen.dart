@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -11,6 +11,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../services/api_service.dart';
+import '../widgets/premium_health_ui.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -24,6 +25,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   List<Map<String, dynamic>> _points = [];
   Map<String, dynamic>? _dietRec;
+  Map<String, dynamic>? _dietAnalysis;
   String? _dietRecError;
   bool _loading = true;
   bool _exporting = false;
@@ -44,24 +46,39 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(_date);
-      final trend = await ApiService.get('/blood-glucose/trend/daily', query: {
-        'date': dateStr,
-      });
+      final trend = await ApiService.get(
+        '/blood-glucose/trend/daily',
+        query: {'date': dateStr},
+      );
 
       Map<String, dynamic>? rec;
       String? recErr;
       try {
-        rec = await ApiService.get('/diet/recommendations/daily', query: {'date': dateStr});
+        rec = await ApiService.get(
+          '/diet/recommendations/daily',
+          query: {'date': dateStr},
+        );
       } on ApiException catch (e) {
         recErr = e.message;
       } catch (_) {
         recErr = '饮食推荐加载失败';
       }
 
+      Map<String, dynamic>? analysis;
+      try {
+        analysis = await ApiService.get(
+          '/diet/analysis/daily',
+          query: {'date': dateStr},
+        );
+      } catch (_) {
+        analysis = null;
+      }
+
       final rows = (trend['points'] as List?) ?? const [];
       setState(() {
         _points = rows.map(_asMap).toList();
         _dietRec = rec;
+        _dietAnalysis = analysis;
         _dietRecError = recErr;
         _loading = false;
       });
@@ -105,9 +122,9 @@ class _ReportScreenState extends State<ReportScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('导出失败，请稍后重试')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导出失败，请稍后重试')));
     } finally {
       if (mounted) {
         setState(() => _exporting = false);
@@ -116,7 +133,9 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _exportImage() async {
-    final boundary = _captureKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    final boundary =
+        _captureKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
     if (boundary == null) {
       throw Exception('capture not ready');
     }
@@ -133,10 +152,9 @@ class _ReportScreenState extends State<ReportScreen> {
     final file = File(path);
     await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      text: '健康报告 ${DateFormat('yyyy-MM-dd').format(_date)}',
-    );
+    await Share.shareXFiles([
+      XFile(path),
+    ], text: '健康报告 ${DateFormat('yyyy-MM-dd').format(_date)}');
   }
 
   Future<void> _exportPdf({required String period}) async {
@@ -157,7 +175,10 @@ class _ReportScreenState extends State<ReportScreen> {
             pw.Bullet(text: 'Max: ${stats.max.toStringAsFixed(2)} mmol/L'),
             pw.Bullet(text: 'Min: ${stats.min.toStringAsFixed(2)} mmol/L'),
             pw.SizedBox(height: 12),
-            pw.Text('Details', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Details',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
               headers: const ['Time', 'Glucose (mmol/L)'],
@@ -167,7 +188,10 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
             if (_dietRec != null) ...[
               pw.SizedBox(height: 12),
-              pw.Text('Diet Recommendation', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Diet Recommendation',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              ),
               pw.SizedBox(height: 6),
               pw.Text((_dietRec!['summary'] ?? '').toString()),
             ],
@@ -183,24 +207,22 @@ class _ReportScreenState extends State<ReportScreen> {
     final file = File(path);
     await file.writeAsBytes(bytes, flush: true);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      text: '$periodTitle health report',
-    );
+    await Share.shareXFiles([XFile(path)], text: '$periodTitle health report');
   }
 
   Future<List<_ReportPoint>> _loadPeriodPoints(String period) async {
     Map<String, dynamic> res;
     if (period == 'weekly') {
       final weekStart = _date.subtract(Duration(days: _date.weekday - 1));
-      res = await ApiService.get('/blood-glucose/trend/weekly', query: {
-        'weekStart': DateFormat('yyyy-MM-dd').format(weekStart),
-      });
+      res = await ApiService.get(
+        '/blood-glucose/trend/weekly',
+        query: {'weekStart': DateFormat('yyyy-MM-dd').format(weekStart)},
+      );
     } else {
-      res = await ApiService.get('/blood-glucose/trend/monthly', query: {
-        'year': _date.year.toString(),
-        'month': _date.month.toString(),
-      });
+      res = await ApiService.get(
+        '/blood-glucose/trend/monthly',
+        query: {'year': _date.year.toString(), 'month': _date.month.toString()},
+      );
     }
 
     final rows = (res['points'] as List?) ?? const [];
@@ -251,8 +273,14 @@ class _ReportScreenState extends State<ReportScreen> {
                   )
                 : const Icon(Icons.ios_share_rounded),
           ),
-          IconButton(icon: const Icon(Icons.calendar_today_rounded), onPressed: _pickDate),
-          IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loading ? null : _load),
+          IconButton(
+            icon: const Icon(Icons.calendar_today_rounded),
+            onPressed: _pickDate,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loading ? null : _load,
+          ),
         ],
       ),
       body: Container(
@@ -266,109 +294,119 @@ class _ReportScreenState extends State<ReportScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _ErrorPane(message: _error!, onRetry: _load)
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: RepaintBoundary(
-                      key: _captureKey,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                        children: [
-                          Text(
-                            '血糖日趋势 · ${DateFormat('yyyy-MM-dd').format(_date)}',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 10),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-                              child: _points.isEmpty
-                                  ? const SizedBox(
-                                      height: 200,
-                                      child: Center(child: Text('当天暂无血糖趋势数据')),
-                                    )
-                                  : Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        SizedBox(height: 220, child: _lineChart()),
-                                        const SizedBox(height: 10),
-                                        _summaryRow(),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                          if (_points.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              '明细点位',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            ..._points.map((item) {
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  title: Text(item['time']?.toString() ?? '-'),
-                                  trailing: Text(
-                                    '${item['value']} mmol/L',
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ],
-                          const SizedBox(height: 16),
-                          Card(
-                            color: const Color(0xFFE8F6F3),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.restaurant_menu_rounded, color: Color(0xFF0B8A7D)),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      '每日饮食推荐：结合当日血糖与饮食数据，供日常参考（不能替代医嘱）。',
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            color: const Color(0xFF2D3E3C),
-                                            height: 1.35,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '今日饮食建议',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (_dietRecError != null)
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Text(
-                                  _dietRecError!,
-                                  style: const TextStyle(color: Color(0xFFC53A2E)),
-                                ),
-                              ),
-                            )
-                          else if (_dietRec != null)
-                            _dietRecommendationCard(context)
-                          else
-                            const SizedBox.shrink(),
-                        ],
+            ? _ErrorPane(message: _error!, onRetry: _load)
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: RepaintBoundary(
+                  key: _captureKey,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    children: [
+                      Text(
+                        '血糖日趋势 · ${DateFormat('yyyy-MM-dd').format(_date)}',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+                          child: _points.isEmpty
+                              ? const SizedBox(
+                                  height: 200,
+                                  child: Center(child: Text('当天暂无血糖趋势数据')),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(height: 220, child: _lineChart()),
+                                    const SizedBox(height: 10),
+                                    _summaryRow(),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      if (_points.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '明细点位',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        ..._points.map((item) {
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              title: Text(item['time']?.toString() ?? '-'),
+                              trailing: Text(
+                                '${item['value']} mmol/L',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                      const SizedBox(height: 16),
+                      Card(
+                        color: const Color(0xFFE8F6F3),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.restaurant_menu_rounded,
+                                color: Color(0xFF0B8A7D),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '每日饮食推荐：结合当日血糖与饮食数据，供日常参考（不能替代医嘱）。',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: const Color(0xFF2D3E3C),
+                                        height: 1.35,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_dietAnalysis != null) ...[
+                        _nutritionReportCard(),
+                        const SizedBox(height: 14),
+                      ],
+                      Text(
+                        '今日饮食建议',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_dietRecError != null)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              _dietRecError!,
+                              style: const TextStyle(color: Color(0xFFC53A2E)),
+                            ),
+                          ),
+                        )
+                      else if (_dietRec != null)
+                        _dietRecommendationCard(context)
+                      else
+                        const SizedBox.shrink(),
+                    ],
                   ),
+                ),
+              ),
       ),
     );
   }
@@ -401,8 +439,12 @@ class _ReportScreenState extends State<ReportScreen> {
         borderData: FlBorderData(show: false),
         lineTouchData: const LineTouchData(enabled: true),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -472,7 +514,9 @@ class _ReportScreenState extends State<ReportScreen> {
         .map((e) => _toDouble(e['value']))
         .whereType<double>()
         .toList();
-    final avg = values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length;
+    final avg = values.isEmpty
+        ? 0
+        : values.reduce((a, b) => a + b) / values.length;
 
     return Wrap(
       spacing: 8,
@@ -480,8 +524,12 @@ class _ReportScreenState extends State<ReportScreen> {
       children: [
         _chip('次数 ${values.length}'),
         _chip('均值 ${avg.toStringAsFixed(1)} mmol/L'),
-        _chip('最高 ${values.isEmpty ? '-' : values.reduce(max).toStringAsFixed(1)}'),
-        _chip('最低 ${values.isEmpty ? '-' : values.reduce(min).toStringAsFixed(1)}'),
+        _chip(
+          '最高 ${values.isEmpty ? '-' : values.reduce(max).toStringAsFixed(1)}',
+        ),
+        _chip(
+          '最低 ${values.isEmpty ? '-' : values.reduce(min).toStringAsFixed(1)}',
+        ),
       ],
     );
   }
@@ -499,7 +547,13 @@ class _ReportScreenState extends State<ReportScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (summary.isNotEmpty)
-              Text(summary, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.35)),
+              Text(
+                summary,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
             if (tips.isNotEmpty) ...[
               const SizedBox(height: 12),
               ...tips.map((t) {
@@ -508,9 +562,15 @@ class _ReportScreenState extends State<ReportScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.check_circle_outline_rounded, size: 20, color: Color(0xFF0B8A7D)),
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        size: 20,
+                        color: Color(0xFF0B8A7D),
+                      ),
                       const SizedBox(width: 8),
-                      Expanded(child: Text('$t', style: const TextStyle(height: 1.35))),
+                      Expanded(
+                        child: Text('$t', style: const TextStyle(height: 1.35)),
+                      ),
                     ],
                   ),
                 );
@@ -520,7 +580,9 @@ class _ReportScreenState extends State<ReportScreen> {
               const SizedBox(height: 8),
               Text(
                 '推荐食物（低 GI / 优质蛋白）',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               ...foods.map((raw) {
@@ -540,6 +602,162 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  Widget _nutritionReportCard() {
+    final analysis = _dietAnalysis!;
+    final score = (_toDouble(analysis['score']) ?? 0).round();
+    final grade = '${analysis['grade'] ?? '待评估'}';
+    final headline = '${analysis['headline'] ?? '营养管家已生成今日建议'}';
+    final summary = '${analysis['summary'] ?? ''}';
+    final advice = '${analysis['nextMealAdvice'] ?? ''}';
+    final risks = ((analysis['riskFlags'] as List?) ?? const [])
+        .take(3)
+        .toList();
+    final actions = ((analysis['actionItems'] as List?) ?? const [])
+        .take(3)
+        .toList();
+    final fiber = analysis['estimatedFiberG'];
+    final averageGi = analysis['averageGi'];
+
+    return FrostPanel(
+      tint: const Color(0xFFFFF8EF),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0B8A7D), Color(0xFF78C6B5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    '$score',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '营养评估 · $grade',
+                      style: const TextStyle(
+                        color: Color(0xFF0B6F66),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      headline,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        height: 1.18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF173836),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (summary.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              summary,
+              style: const TextStyle(height: 1.35, color: Color(0xFF35514E)),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _chip('纤维 ${fiber ?? '--'}g'),
+              _chip('平均 GI ${averageGi ?? '--'}'),
+              ...risks.map((risk) => _chip('$risk')),
+            ],
+          ),
+          if (advice.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F6F3),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.restaurant_rounded,
+                    color: Color(0xFF0B8A7D),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      advice,
+                      style: const TextStyle(
+                        color: Color(0xFF1F5E59),
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '行动清单',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            ...actions.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: Color(0xFF0B8A7D),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$item',
+                        style: const TextStyle(height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _chip(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -549,7 +767,10 @@ class _ReportScreenState extends State<ReportScreen> {
       ),
       child: Text(
         label,
-        style: const TextStyle(color: Color(0xFF1F6A63), fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: Color(0xFF1F6A63),
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -601,7 +822,11 @@ class _ErrorPane extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 42, color: Color(0xFFC53A2E)),
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 42,
+            color: Color(0xFFC53A2E),
+          ),
           const SizedBox(height: 10),
           Text(message, style: const TextStyle(color: Color(0xFFC53A2E))),
           const SizedBox(height: 12),

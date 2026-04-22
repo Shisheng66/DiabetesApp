@@ -13,6 +13,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _data;
+  Map<String, dynamic>? _nutrition;
   String? _error;
   bool _loading = true;
 
@@ -28,10 +29,21 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     try {
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final res = await ApiService.get('/dashboard/today');
+      Map<String, dynamic>? nutrition;
+      try {
+        nutrition = await ApiService.get(
+          '/diet/analysis/daily',
+          query: {'date': today},
+        );
+      } catch (_) {
+        nutrition = null;
+      }
       if (!mounted) return;
       setState(() {
         _data = res;
+        _nutrition = nutrition;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -53,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (value is num) return value.toDouble();
     return double.tryParse('$value');
   }
+
+  List<dynamic> _asList(dynamic value) => value is List ? value : const [];
 
   String _measureTypeText(String raw) {
     switch (raw) {
@@ -146,6 +160,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     _hero(glucose, eat, burn, tone),
                     const SizedBox(height: 14),
                     _focusStrip(glucose, latest, tone),
+                    const SizedBox(height: 14),
+                    _nutritionCaretakerCard(),
                     const SizedBox(height: 14),
                     _rhythmSection(eat, burn),
                     const SizedBox(height: 14),
@@ -363,6 +379,163 @@ class _HomeScreenState extends State<HomeScreen> {
             const Color(0xFF284C7C),
             full: true,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _nutritionCaretakerCard() {
+    final nutrition = _nutrition;
+    if (nutrition == null) {
+      return FrostPanel(
+        tint: const Color(0xFFFFF7EE),
+        child: Row(
+          children: const [
+            Icon(Icons.restaurant_rounded, color: Color(0xFF9A6338)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '记录今天的饮食后，营养管家会自动给出下一餐建议。',
+                style: TextStyle(
+                  color: Color(0xFF6C4A2F),
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final score = (_toDouble(nutrition['score']) ?? 0).round();
+    final grade = '${nutrition['grade'] ?? '待评估'}';
+    final headline = '${nutrition['headline'] ?? '营养管家已生成今日建议'}';
+    final advice = '${nutrition['nextMealAdvice'] ?? ''}';
+    final actions = _asList(nutrition['actionItems']);
+    final risks = _asList(nutrition['riskFlags']);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF17312D), Color(0xFF0B756C), Color(0xFFFFD9AC)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2217332F),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    '$score',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '营养管家 · $grade',
+                      style: const TextStyle(
+                        color: Color(0xFFFFE8C8),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      headline,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        height: 1.2,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (risks.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: risks
+                  .take(3)
+                  .map(
+                    (risk) => SoftStatPill(
+                      text: '$risk',
+                      bg: const Color(0xFFFFF1D7),
+                      fg: const Color(0xFF6B3F13),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (advice.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              advice,
+              style: const TextStyle(
+                color: Colors.white,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.task_alt_rounded,
+                  color: Color(0xFFFFE8C8),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${actions.first}',
+                    style: const TextStyle(
+                      color: Color(0xEFFFFFFF),
+                      height: 1.32,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

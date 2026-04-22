@@ -182,6 +182,48 @@ public class DietDto {
     }
 
     @Data
+    public static class NutritionAnalysisResponse {
+        private LocalDate date;
+        private Integer score;
+        private String grade;
+        private String headline;
+        private String summary;
+        private BigDecimal totalCalorieKcal;
+        private BigDecimal estimatedFiberG;
+        private Integer fiberAchievementPct;
+        private BigDecimal averageGi;
+        private List<MacroBalanceItem> macroBalance;
+        private List<MealBalanceItem> mealBalance;
+        private List<String> riskFlags;
+        private List<String> insights;
+        private List<String> actionItems;
+        private String nextMealAdvice;
+    }
+
+    @Data
+    public static class MacroBalanceItem {
+        private String key;
+        private String label;
+        private BigDecimal grams;
+        private BigDecimal calorieSharePct;
+        private BigDecimal targetMinPct;
+        private BigDecimal targetMaxPct;
+        private String status;
+    }
+
+    @Data
+    public static class MealBalanceItem {
+        private String mealType;
+        private String mealLabel;
+        private BigDecimal calorieKcal;
+        private BigDecimal carbG;
+        private BigDecimal proteinG;
+        private BigDecimal fatG;
+        private Integer recordCount;
+        private String status;
+    }
+
+    @Data
     public static class PageResult<T> {
         private List<T> content;
         private int page;

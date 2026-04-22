@@ -41,6 +41,13 @@ public class DietController {
         return dietService.getDailySummary(user, date);
     }
 
+    @GetMapping("/analysis/daily")
+    public DietDto.NutritionAnalysisResponse dailyAnalysis(
+            @AuthenticationPrincipal CurrentUser user,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return dietService.getDailyNutritionAnalysis(user, date);
+    }
+
     @DeleteMapping("/records/{id}")
     public void delete(@AuthenticationPrincipal CurrentUser user, @PathVariable Long id) {
         dietService.delete(user, id);

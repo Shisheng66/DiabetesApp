@@ -32,6 +32,7 @@ class _DietScreenState extends State<DietScreen> {
   String? _error;
   Map<String, dynamic>? _summary;
   Map<String, dynamic>? _mealPlan;
+  Map<String, dynamic>? _analysis;
   List<Map<String, dynamic>> _records = [];
   List<Map<String, dynamic>> _foods = [];
 
@@ -105,6 +106,10 @@ class _DietScreenState extends State<DietScreen> {
         '/diet/meal-plans',
         query: {'date': d},
       );
+      final analysisRes = await ApiService.get(
+        '/diet/analysis/daily',
+        query: {'date': d},
+      );
 
       final rows = _list(recordsRes).map(_map).toList()
         ..sort(
@@ -119,6 +124,7 @@ class _DietScreenState extends State<DietScreen> {
         _summary = summaryRes;
         _foods = _list(foodsRes).map(_map).toList();
         _mealPlan = planRes;
+        _analysis = analysisRes;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -584,6 +590,343 @@ class _DietScreenState extends State<DietScreen> {
     }
   }
 
+  List<dynamic> _asList(dynamic value) => value is List ? value : const [];
+
+  Widget _nutritionCaretakerPanel() {
+    final analysis = _analysis;
+    if (analysis == null) return const SizedBox.shrink();
+
+    final score = (_num(analysis['score']) ?? 0).round();
+    final grade = '${analysis['grade'] ?? '待评估'}';
+    final headline = '${analysis['headline'] ?? '营养管家正在整理今天的饮食结构'}';
+    final summary = '${analysis['summary'] ?? ''}';
+    final advice = '${analysis['nextMealAdvice'] ?? ''}';
+    final risks = _asList(analysis['riskFlags']);
+    final actions = _asList(analysis['actionItems']);
+    final macros = _asList(analysis['macroBalance']).map(_map).toList();
+    final fiberPct = (_num(analysis['fiberAchievementPct']) ?? 0).clamp(0, 160);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF102F2B), Color(0xFF0A7D72), Color(0xFF84C7B9)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x220B8A7D),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 84,
+                height: 84,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 84,
+                      height: 84,
+                      child: CircularProgressIndicator(
+                        value: (score / 100).clamp(0, 1),
+                        strokeWidth: 8,
+                        backgroundColor: Colors.white.withValues(alpha: 0.14),
+                        color: const Color(0xFFFFDFAF),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$score',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          grade,
+                          style: const TextStyle(
+                            color: Color(0xFFFFE8C8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '营养管家',
+                      style: TextStyle(
+                        color: Color(0xBFFFFFFF),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      headline,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 21,
+                        height: 1.16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (summary.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        summary,
+                        style: const TextStyle(
+                          color: Color(0xDFFFFFFF),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (macros.isNotEmpty) _macroBalanceStrip(macros),
+          const SizedBox(height: 14),
+          _fiberMeter(fiberPct.toDouble()),
+          if (risks.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: risks
+                  .take(3)
+                  .map(
+                    (risk) => _nutritionTag(
+                      '$risk',
+                      const Color(0xFFFFF1D7),
+                      const Color(0xFF6B3F13),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (advice.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _adviceBox('下一餐建议', advice, Icons.restaurant_rounded),
+          ],
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...actions
+                .take(3)
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: Color(0xFFFFDFAF),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$item',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              height: 1.32,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _macroBalanceStrip(List<Map<String, dynamic>> macros) {
+    final colors = const {
+      'carb': Color(0xFFFFDFAF),
+      'protein': Color(0xFFB8F3DF),
+      'fat': Color(0xFFC9DCFF),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '宏量营养占比',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        ...macros.map((item) {
+          final key = '${item['key']}';
+          final share = (_num(item['calorieSharePct']) ?? 0).clamp(0, 100);
+          final status = '${item['status'] ?? 'OK'}';
+          final color = colors[key] ?? const Color(0xFFFFDFAF);
+          final label = '${item['label'] ?? ''}';
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$label ${share.toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      status == 'OK' ? '合适' : (status == 'HIGH' ? '偏高' : '偏低'),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: share / 100,
+                    minHeight: 7,
+                    backgroundColor: Colors.white.withValues(alpha: 0.13),
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _fiberMeter(double fiberPct) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.grass_rounded, color: Color(0xFFB8F3DF)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '膳食纤维目标',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: (fiberPct / 100).clamp(0, 1),
+                    minHeight: 7,
+                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    color: const Color(0xFFB8F3DF),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${fiberPct.round()}%',
+            style: const TextStyle(
+              color: Color(0xFFB8F3DF),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _adviceBox(String title, String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFFFFDFAF)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFFFFE8C8),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  text,
+                  style: const TextStyle(color: Colors.white, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _nutritionTag(String text, Color bg, Color fg) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w800),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final planItems = _mealPlan?['items'] is List
@@ -675,6 +1018,8 @@ class _DietScreenState extends State<DietScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    _nutritionCaretakerPanel(),
                     const SizedBox(height: 10),
                     // 操作按钮区
                     Card(

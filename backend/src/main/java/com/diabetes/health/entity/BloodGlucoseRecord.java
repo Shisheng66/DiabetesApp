@@ -56,6 +56,10 @@ public class BloodGlucoseRecord {
     @Builder.Default
     private AbnormalFlag abnormalFlag = AbnormalFlag.NORMAL;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

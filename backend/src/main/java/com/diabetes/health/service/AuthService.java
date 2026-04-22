@@ -6,6 +6,7 @@ import com.diabetes.health.entity.UserAccount;
 import com.diabetes.health.entity.UserHealthProfile;
 import com.diabetes.health.repository.UserAccountRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
+import com.diabetes.health.security.TokenBlacklistService;
 import com.diabetes.health.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthVerificationService authVerificationService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     public AuthDto.CaptchaResponse createCaptcha() {
         return authVerificationService.createCaptcha();
@@ -94,6 +96,17 @@ public class AuthService {
         String token = jwtUtil.generate(account.getId(), account.getPhone(), account.getRole().name());
         AuthDto.UserInfo info = toUserInfo(account, profile);
         return new AuthDto.LoginResponse(token, info);
+    }
+
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank() || !authorizationHeader.startsWith("Bearer ")) {
+            return;
+        }
+        String token = authorizationHeader.substring(7).trim();
+        if (token.isEmpty() || !jwtUtil.validate(token)) {
+            return;
+        }
+        tokenBlacklistService.revoke(token, jwtUtil.getExpiration(token));
     }
 
     private AuthDto.UserInfo toUserInfo(UserAccount account, UserHealthProfile profile) {

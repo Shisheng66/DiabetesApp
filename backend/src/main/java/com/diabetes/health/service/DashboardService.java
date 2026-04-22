@@ -12,6 +12,7 @@ import com.diabetes.health.repository.ExerciseRecordRepository;
 import com.diabetes.health.repository.HealthReminderRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,16 +27,18 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DashboardService {
 
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
+
     private final BloodGlucoseRecordRepository bloodGlucoseRecordRepository;
     private final DietRecordRepository dietRecordRepository;
     private final ExerciseRecordRepository exerciseRecordRepository;
     private final HealthReminderRepository healthReminderRepository;
 
+    @Cacheable(value = "dashboard", key = "#user.id", unless = "#result == null")
     public DashboardDto.TodayResponse today(CurrentUser user) {
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate today = LocalDate.now(zone);
-        Instant start = today.atStartOfDay(zone).toInstant();
-        Instant end = today.plusDays(1).atStartOfDay(zone).toInstant();
+        LocalDate today = LocalDate.now(APP_ZONE);
+        Instant start = today.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = today.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
 
         List<BloodGlucoseRecord> glucoseRecords = bloodGlucoseRecordRepository
                 .findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);

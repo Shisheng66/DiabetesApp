@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Date;
 
 /**
@@ -65,5 +66,10 @@ public class JwtUtil {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public Instant getExpiration(String token) {
+        Date expiration = parse(token).getExpiration();
+        return expiration == null ? null : expiration.toInstant();
     }
 }

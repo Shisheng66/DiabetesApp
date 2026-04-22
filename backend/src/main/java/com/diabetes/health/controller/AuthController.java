@@ -3,6 +3,7 @@ package com.diabetes.health.controller;
 import com.diabetes.health.dto.AuthDto;
 import com.diabetes.health.service.AuthService;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,5 +37,10 @@ public class AuthController {
     @PostMapping("/sms/send")
     public AuthDto.SendSmsCodeResponse sendSmsCode(@Valid @RequestBody AuthDto.SendSmsCodeRequest request) {
         return authService.sendSmsCode(request);
+    }
+
+    @PostMapping("/logout")
+    public void logout(HttpServletRequest request) {
+        authService.logout(request.getHeader("Authorization"));
     }
 }

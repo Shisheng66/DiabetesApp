@@ -8,6 +8,7 @@ import com.diabetes.health.repository.BloodGlucoseRecordRepository;
 import com.diabetes.health.repository.GlucoseAbnormalEventRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
+import org.springframework.cache.annotation.CacheEvict;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,11 +27,14 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class BloodGlucoseService {
 
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
+
     private final BloodGlucoseRecordRepository recordRepository;
     private final GlucoseAbnormalEventRepository abnormalEventRepository;
     private final UserHealthProfileRepository healthProfileRepository;
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public BloodGlucoseDto.RecordResponse create(CurrentUser user, BloodGlucoseDto.CreateRecordRequest req) {
         BloodGlucoseRecord.MeasureType measureType;
         try {
@@ -101,8 +105,8 @@ public class BloodGlucoseService {
                                                                            String measureType, int page, int size) {
         PageRequest pageRequest = PageRequest.of(page, size);
         if (startDate != null && endDate != null) {
-            Instant start = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-            Instant end = endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+            Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
+            Instant end = endDate.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
             List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
             BloodGlucoseRecord.MeasureType typeFilterVal = null;
             if (measureType != null && !measureType.isBlank()) {
@@ -120,7 +124,7 @@ public class BloodGlucoseService {
             list = from < list.size() ? list.subList(from, to) : List.of();
             return toPageResult(list, page, size, total);
         }
-        Page<BloodGlucoseRecord> pageResult = recordRepository.findByUserIdOrderByMeasureTimeDesc(user.getId(), pageRequest);
+        Page<BloodGlucoseRecord> pageResult = recordRepository.findByUserIdAndDeletedFalseOrderByMeasureTimeDesc(user.getId(), pageRequest);
         List<BloodGlucoseDto.RecordResponse> resp = pageResult.getContent().stream()
                 .map(BloodGlucoseDto.RecordResponse::from)
                 .toList();
@@ -145,7 +149,7 @@ public class BloodGlucoseService {
     }
 
     public BloodGlucoseDto.RecordResponse getById(CurrentUser user, Long id) {
-        BloodGlucoseRecord record = recordRepository.findById(id)
+        BloodGlucoseRecord record = recordRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "记录不存在"));
         if (!record.getUserId().equals(user.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权限");
@@ -153,23 +157,26 @@ public class BloodGlucoseService {
         return BloodGlucoseDto.RecordResponse.from(record);
     }
 
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
-        BloodGlucoseRecord record = recordRepository.findById(id)
+        BloodGlucoseRecord record = recordRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "记录不存在"));
         if (!record.getUserId().equals(user.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权限");
         }
-        recordRepository.delete(record);
+        record.setDeleted(true);
+        recordRepository.save(record);
     }
 
     public BloodGlucoseDto.TrendResponse trendDaily(CurrentUser user, LocalDate date) {
-        Instant start = date.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant end = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant start = date.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
-            p.setTime(r.getMeasureTime().atZone(ZoneId.systemDefault()).toLocalTime().toString());
+            p.setTime(r.getMeasureTime().atZone(APP_ZONE).toLocalTime().toString());
             p.setValue(r.getValueMmolL());
             points.add(p);
         }
@@ -180,13 +187,13 @@ public class BloodGlucoseService {
     }
 
     public BloodGlucoseDto.TrendResponse trendWeekly(CurrentUser user, LocalDate weekStart) {
-        Instant start = weekStart.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant end = weekStart.plusWeeks(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant start = weekStart.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = weekStart.plusWeeks(1).atStartOfDay(APP_ZONE).toInstant();
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
-            p.setTime(r.getMeasureTime().atZone(ZoneId.systemDefault()).toLocalDate().toString());
+            p.setTime(r.getMeasureTime().atZone(APP_ZONE).toLocalDate().toString());
             p.setValue(r.getValueMmolL());
             points.add(p);
         }
@@ -199,13 +206,13 @@ public class BloodGlucoseService {
     public BloodGlucoseDto.TrendResponse trendMonthly(CurrentUser user, int year, int month) {
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.plusMonths(1);
-        Instant start = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant end = endDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = endDate.atStartOfDay(APP_ZONE).toInstant();
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = new ArrayList<>();
         for (BloodGlucoseRecord r : list) {
             BloodGlucoseDto.TrendPoint p = new BloodGlucoseDto.TrendPoint();
-            p.setTime(r.getMeasureTime().atZone(ZoneId.systemDefault()).toLocalDate().toString());
+            p.setTime(r.getMeasureTime().atZone(APP_ZONE).toLocalDate().toString());
             p.setValue(r.getValueMmolL());
             points.add(p);
         }

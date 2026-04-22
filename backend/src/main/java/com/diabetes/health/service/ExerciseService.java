@@ -11,6 +11,7 @@ import com.diabetes.health.repository.ExerciseTypeRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,12 +29,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ExerciseService {
 
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
+
     private final ExerciseRecordRepository exerciseRecordRepository;
     private final ExerciseTypeRepository exerciseTypeRepository;
     private final DietRecordRepository dietRecordRepository;
     private final UserHealthProfileRepository userHealthProfileRepository;
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public ExerciseDto.RecordResponse create(CurrentUser user, ExerciseDto.CreateRecordRequest req) {
         ExerciseType type = exerciseTypeRepository.findById(req.getExerciseTypeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运动类型不存在"));
@@ -68,9 +72,8 @@ public class ExerciseService {
 
     public List<ExerciseDto.RecordResponse> list(CurrentUser user, LocalDate startDate, LocalDate endDate, int page, int size) {
         if (startDate != null && endDate != null) {
-            ZoneId zone = ZoneId.systemDefault();
-            Instant start = startDate.atStartOfDay(zone).toInstant();
-            Instant end = endDate.plusDays(1).atStartOfDay(zone).toInstant();
+            Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
+            Instant end = endDate.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
             List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end);
             return list.stream()
                     .map(record -> toRecordResponse(record, resolveExerciseName(record.getExerciseTypeId())))
@@ -84,9 +87,8 @@ public class ExerciseService {
     }
 
     public ExerciseDto.DailySummaryResponse getDailySummary(CurrentUser user, LocalDate date) {
-        ZoneId zone = ZoneId.systemDefault();
-        Instant start = date.atStartOfDay(zone).toInstant();
-        Instant end = date.plusDays(1).atStartOfDay(zone).toInstant();
+        Instant start = date.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
         List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end);
 
         ExerciseDto.DailySummaryResponse response = new ExerciseDto.DailySummaryResponse();
@@ -102,6 +104,8 @@ public class ExerciseService {
         return response;
     }
 
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
         ExerciseRecord record = exerciseRecordRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运动记录不存在"));
@@ -121,9 +125,8 @@ public class ExerciseService {
                 .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
                 .toList());
 
-        ZoneId zone = ZoneId.systemDefault();
-        Instant start = date.atStartOfDay(zone).toInstant();
-        Instant end = date.plusDays(1).atStartOfDay(zone).toInstant();
+        Instant start = date.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
         BigDecimal burned = sum(exerciseRecordRepository.findByUserIdAndStartTimeBetweenOrderByStartTimeDesc(user.getId(), start, end)
                 .stream()
                 .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())

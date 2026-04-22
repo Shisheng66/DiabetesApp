@@ -26,6 +26,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -139,20 +140,21 @@ class CommunityServiceTest {
                         .liked(true)
                         .favorited(false)
                         .build()));
-        when(communityPostInteractionRepository.countByPostIdAndLikedTrue(15L)).thenReturn(1L);
-        when(communityPostInteractionRepository.countByPostIdAndFavoritedTrue(15L)).thenReturn(0L);
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(
                 UserAccount.builder().id(1L).phone("13800138000").role(UserAccount.Role.PATIENT).build()
         ));
         when(userHealthProfileRepository.findByUserId(1L)).thenReturn(Optional.of(
                 UserHealthProfile.builder().userId(1L).nickname("阿宁").build()
         ));
-        when(communityPostRepository.save(any(CommunityPost.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(communityPostInteractionRepository.save(any(CommunityPostInteraction.class))).thenAnswer(invocation -> {
             CommunityPostInteraction item = invocation.getArgument(0);
             item.setId(101L);
             return item;
         });
+        doAnswer(invocation -> {
+            post.setLikeCount(post.getLikeCount() + 1);
+            return null;
+        }).when(communityPostRepository).adjustLikeCount(15L, 1);
 
         CommunityDto.PostResponse response = communityService.toggleLike(user, 15L);
 

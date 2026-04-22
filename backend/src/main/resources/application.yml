@@ -10,6 +10,15 @@ spring:
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 2s
+  cache:
+    type: simple
   jpa:
     properties:
       hibernate:
@@ -21,7 +30,7 @@ server:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:dev-only-secret-please-change-in-prod-32chars}
+    secret: ${JWT_SECRET}
     expiration-seconds: 604800
   auth:
     captcha-expire-seconds: 180

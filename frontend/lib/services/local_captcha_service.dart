@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 
 class LocalCaptcha {
   const LocalCaptcha({
@@ -36,11 +39,6 @@ class LocalCaptchaService {
   }
 
   static String _hash(String input) {
-    var hash = 2166136261;
-    for (final unit in input.codeUnits) {
-      hash ^= unit;
-      hash = (hash * 16777619) & 0x7fffffff;
-    }
-    return hash.toRadixString(16);
+    return sha256.convert(utf8.encode(input)).toString();
   }
 }

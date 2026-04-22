@@ -62,6 +62,15 @@ class AuthApiService {
             .toSet()
             .toList(growable: false);
 
+    if (candidates.isEmpty) {
+      throw ApiException(
+        0,
+        ApiConfig.isProduction
+            ? '生产环境未配置后端地址，请通过 --dart-define=API_BASE_URL 指定 HTTPS 地址'
+            : '登录服务暂时不可用，请检查后端地址配置',
+      );
+    }
+
     final ordered = _prioritizeCandidates(candidates);
     for (final base in ordered) {
       final healthy = await _isHealthy(base);

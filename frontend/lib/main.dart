@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
@@ -20,21 +23,22 @@ void main() async {
 class DiabetesApp extends StatelessWidget {
   const DiabetesApp({super.key});
 
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '糖尿病健康管家',
+      navigatorKey: navigatorKey,
       theme: AppTheme.light(),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
       locale: const Locale('zh', 'CN'),
       home: const AuthGate(),
     );
@@ -51,11 +55,30 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   bool _loading = true;
   bool _signedIn = false;
+  StreamSubscription<void>? _authExpiredSub;
 
   @override
   void initState() {
     super.initState();
+    _authExpiredSub = ApiService.onAuthExpired.listen((_) async {
+      await AuthService.logout(revokeRemote: false);
+      if (!mounted) return;
+      setState(() {
+        _signedIn = false;
+        _loading = false;
+      });
+      DiabetesApp.navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    });
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _authExpiredSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {
@@ -120,9 +143,9 @@ class _SplashScreen extends StatelessWidget {
               const SizedBox(height: 20),
               Text(
                 '糖尿病健康管家',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
               const SizedBox(

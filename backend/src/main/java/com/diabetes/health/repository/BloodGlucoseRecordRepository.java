@@ -9,12 +9,15 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface BloodGlucoseRecordRepository extends JpaRepository<BloodGlucoseRecord, Long> {
 
-    Page<BloodGlucoseRecord> findByUserIdOrderByMeasureTimeDesc(Long userId, Pageable pageable);
+    Page<BloodGlucoseRecord> findByUserIdAndDeletedFalseOrderByMeasureTimeDesc(Long userId, Pageable pageable);
 
-    @Query("SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC")
+    Optional<BloodGlucoseRecord> findByIdAndDeletedFalse(Long id);
+
+    @Query("SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC")
     List<BloodGlucoseRecord> findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(
             @Param("userId") Long userId,
             @Param("start") Instant start,

@@ -13,6 +13,8 @@ import com.diabetes.health.repository.UserAccountRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.owasp.html.PolicyFactory;
+import org.owasp.html.Sanitizers;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,8 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class CommunityService {
+
+    private static final PolicyFactory CONTENT_POLICY = Sanitizers.FORMATTING.and(Sanitizers.LINKS);
 
     private final CommunityPostRepository communityPostRepository;
     private final CommunityCommentRepository communityCommentRepository;
@@ -121,7 +125,7 @@ public class CommunityService {
 
     @Transactional
     public CommunityDto.CommentResponse createComment(CurrentUser user, Long postId, CommunityDto.CreateCommentRequest request) {
-        CommunityPost post = requirePost(postId);
+        requirePost(postId);
         String content = normalizeContent(request.getContent(), 800, "评论内容不能为空");
 
         CommunityComment saved = communityCommentRepository.save(CommunityComment.builder()
@@ -130,8 +134,7 @@ public class CommunityService {
                 .content(content)
                 .build());
 
-        post.setCommentCount(Math.toIntExact(communityCommentRepository.countByPostId(postId)));
-        communityPostRepository.save(post);
+        communityPostRepository.adjustCommentCount(postId, 1);
 
         return toCommentResponse(saved, loadAuthor(user.getId()));
     }
@@ -160,36 +163,38 @@ public class CommunityService {
 
     @Transactional
     public CommunityDto.PostResponse toggleLike(CurrentUser user, Long postId) {
-        CommunityPost post = requirePost(postId);
+        requirePost(postId);
         CommunityPostInteraction interaction = communityPostInteractionRepository.findByPostIdAndUserId(postId, user.getId())
                 .orElseGet(() -> CommunityPostInteraction.builder()
                         .postId(postId)
                         .userId(user.getId())
                         .build());
 
-        interaction.setLiked(!Boolean.TRUE.equals(interaction.getLiked()));
+        boolean likedBefore = Boolean.TRUE.equals(interaction.getLiked());
+        interaction.setLiked(!likedBefore);
         persistOrDeleteInteraction(interaction);
-        syncCounters(post);
+        communityPostRepository.adjustLikeCount(postId, likedBefore ? -1 : 1);
         return getPost(user, postId);
     }
 
     @Transactional
     public CommunityDto.PostResponse toggleFavorite(CurrentUser user, Long postId) {
-        CommunityPost post = requirePost(postId);
+        requirePost(postId);
         CommunityPostInteraction interaction = communityPostInteractionRepository.findByPostIdAndUserId(postId, user.getId())
                 .orElseGet(() -> CommunityPostInteraction.builder()
                         .postId(postId)
                         .userId(user.getId())
                         .build());
 
-        interaction.setFavorited(!Boolean.TRUE.equals(interaction.getFavorited()));
+        boolean favoritedBefore = Boolean.TRUE.equals(interaction.getFavorited());
+        interaction.setFavorited(!favoritedBefore);
         persistOrDeleteInteraction(interaction);
-        syncCounters(post);
+        communityPostRepository.adjustFavoriteCount(postId, favoritedBefore ? -1 : 1);
         return getPost(user, postId);
     }
 
     private String normalizeContent(String content, int maxLength, String emptyMessage) {
-        String normalized = content == null ? "" : content.trim();
+        String normalized = CONTENT_POLICY.sanitize(content == null ? "" : content.trim());
         if (normalized.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, emptyMessage);
         }
@@ -268,12 +273,6 @@ public class CommunityService {
             return;
         }
         communityPostInteractionRepository.save(interaction);
-    }
-
-    private void syncCounters(CommunityPost post) {
-        post.setLikeCount(Math.toIntExact(communityPostInteractionRepository.countByPostIdAndLikedTrue(post.getId())));
-        post.setFavoriteCount(Math.toIntExact(communityPostInteractionRepository.countByPostIdAndFavoritedTrue(post.getId())));
-        communityPostRepository.save(post);
     }
 
     private Map<Long, AuthorSummary> loadAuthors(List<Long> userIds) {

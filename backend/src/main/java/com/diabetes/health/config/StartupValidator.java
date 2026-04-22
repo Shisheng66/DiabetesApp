@@ -13,6 +13,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class StartupValidator {
 
+    private static final String UNSAFE_DEFAULT_JWT_SECRET =
+            "dev-only-secret-please-change-in-prod-32chars";
+
     private final JwtProperties jwtProperties;
     private final AppProperties appProperties;
 
@@ -35,6 +38,10 @@ public class StartupValidator {
                 "JWT secret 配置错误：必须至少 32 个字符。当前长度：" + 
                 (jwtProperties.getSecret() != null ? jwtProperties.getSecret().length() : 0)
             );
+        }
+
+        if (UNSAFE_DEFAULT_JWT_SECRET.equals(jwtProperties.getSecret())) {
+            throw new IllegalStateException("JWT secret 使用了默认不安全值，请通过环境变量 JWT_SECRET 设置");
         }
         
         if (jwtProperties.getExpirationSeconds() == null || jwtProperties.getExpirationSeconds() <= 0) {

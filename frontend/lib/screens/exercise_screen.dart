@@ -126,6 +126,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     int? typeId = _toInt(_asMap(_types.first)['id']);
     final durationCtrl = TextEditingController();
     final remarkCtrl = TextEditingController();
+    var submitting = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -175,39 +176,56 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                     ),
                     const SizedBox(height: 18),
                     FilledButton(
-                      onPressed: () async {
-                        final min = int.tryParse(durationCtrl.text.trim()) ?? 0;
-                        if (typeId == null || min <= 0) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text('请输入有效时长')),
-                          );
-                          return;
-                        }
+                      onPressed: submitting
+                          ? null
+                          : () async {
+                              final min =
+                                  int.tryParse(durationCtrl.text.trim()) ?? 0;
+                              if (typeId == null || min <= 0) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(content: Text('请输入有效时长')),
+                                );
+                                return;
+                              }
 
-                        try {
-                          await ApiService.post('/exercise/records', {
-                            'exerciseTypeId': typeId,
-                            'startTime': DateTime.now()
-                                .toUtc()
-                                .toIso8601String(),
-                            'durationMin': min,
-                            'remark': remarkCtrl.text.trim().isEmpty
-                                ? null
-                                : remarkCtrl.text.trim(),
-                          });
-                          if (!ctx.mounted) return;
-                          Navigator.pop(ctx);
-                          await _loadAll();
-                          if (!mounted) return;
-                          AppToast.success(context, '运动记录添加成功');
-                        } on ApiException catch (e) {
-                          if (!ctx.mounted) return;
-                          ScaffoldMessenger.of(
-                            ctx,
-                          ).showSnackBar(SnackBar(content: Text(e.message)));
-                        }
-                      },
-                      child: const Text('保存记录'),
+                              setModal(() => submitting = true);
+                              try {
+                                await ApiService.post('/exercise/records', {
+                                  'exerciseTypeId': typeId,
+                                  'startTime': DateTime.now()
+                                      .toUtc()
+                                      .toIso8601String(),
+                                  'durationMin': min,
+                                  'remark': remarkCtrl.text.trim().isEmpty
+                                      ? null
+                                      : remarkCtrl.text.trim(),
+                                });
+                                if (!ctx.mounted) return;
+                                Navigator.pop(ctx);
+                                await _loadAll();
+                                if (!mounted) return;
+                                AppToast.success(context, '运动记录添加成功');
+                              } on ApiException catch (e) {
+                                if (!ctx.mounted) return;
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text(e.message)),
+                                );
+                              } finally {
+                                if (ctx.mounted) {
+                                  setModal(() => submitting = false);
+                                }
+                              }
+                            },
+                      child: submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('保存记录'),
                     ),
                   ],
                 ),

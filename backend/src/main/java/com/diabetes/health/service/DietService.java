@@ -11,6 +11,7 @@ import com.diabetes.health.repository.FoodNutritionRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ public class DietService {
     private final UserHealthProfileRepository userHealthProfileRepository;
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public DietDto.RecordResponse create(CurrentUser user, DietDto.CreateRecordRequest req) {
         FoodNutrition food = findAccessibleFood(user.getId(), req.getFoodId());
         DietRecord.MealType mealType = parseMealType(req.getMealType());
@@ -115,6 +117,8 @@ public class DietService {
         return response;
     }
 
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
         DietRecord record = dietRecordRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "饮食记录不存在"));

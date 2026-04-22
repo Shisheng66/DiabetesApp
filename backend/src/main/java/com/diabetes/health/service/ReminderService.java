@@ -8,6 +8,7 @@ import com.diabetes.health.repository.HealthReminderRepository;
 import com.diabetes.health.repository.UserPushTokenRepository;
 import com.diabetes.health.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class ReminderService {
     private final UserPushTokenRepository userPushTokenRepository;
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public ReminderDto.ReminderResponse create(CurrentUser user, ReminderDto.CreateReminderRequest req) {
         HealthReminder.ReminderType type;
         try {
@@ -58,6 +60,7 @@ public class ReminderService {
     }
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public ReminderDto.ReminderResponse update(CurrentUser user, Long id, ReminderDto.UpdateReminderRequest req) {
         HealthReminder reminder = healthReminderRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "提醒不存在"));
@@ -77,6 +80,7 @@ public class ReminderService {
     }
 
     @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
     public void delete(CurrentUser user, Long id) {
         HealthReminder reminder = healthReminderRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "提醒不存在"));

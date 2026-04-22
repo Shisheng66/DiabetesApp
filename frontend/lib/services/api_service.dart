@@ -13,6 +13,11 @@ class ApiService {
   static Future<String>? _resolvingApiBaseFuture;
   static DateTime? _lastSubnetScanAt;
   static const Duration _subnetScanCooldown = Duration(minutes: 5);
+  static final StreamController<void> _authExpiredController =
+      StreamController<void>.broadcast();
+  static bool _authExpiredNotified = false;
+
+  static Stream<void> get onAuthExpired => _authExpiredController.stream;
 
   /// Call after backend/network changes to force rediscovery.
   static void clearResolvedApiBase() {
@@ -22,6 +27,7 @@ class ApiService {
 
   static void setToken(String? token) {
     _token = token;
+    _authExpiredNotified = false;
   }
 
   static Map<String, String> get _headers {
@@ -137,6 +143,15 @@ class ApiService {
           .toList(growable: false),
     );
 
+    if (firstRound.isEmpty) {
+      throw ApiException(
+        0,
+        ApiConfig.isProduction
+            ? '生产环境未配置后端地址，请通过 --dart-define=API_BASE_URL 指定 HTTPS 地址'
+            : '未找到可用的后端地址候选',
+      );
+    }
+
     final directFound = await _findHealthyBase(
       firstRound,
       timeout: const Duration(seconds: 4),
@@ -153,8 +168,9 @@ class ApiService {
 
     final now = DateTime.now();
     final canRescan =
-        _lastSubnetScanAt == null ||
-        now.difference(_lastSubnetScanAt!) >= _subnetScanCooldown;
+        !ApiConfig.isProduction &&
+        (_lastSubnetScanAt == null ||
+            now.difference(_lastSubnetScanAt!) >= _subnetScanCooldown);
     if (canRescan) {
       _lastSubnetScanAt = now;
       final scanRound = _prioritizeCandidates(
@@ -402,6 +418,16 @@ class ApiService {
     http.Response resp,
   ) async {
     final body = _tryParseJson(resp.body);
+
+    if (resp.statusCode == 401) {
+      _token = null;
+      _resolvedApiBase = null;
+      if (!_authExpiredNotified) {
+        _authExpiredNotified = true;
+        _authExpiredController.add(null);
+      }
+      throw ApiException(401, '登录已过期，请重新登录', body);
+    }
 
     if (resp.statusCode >= 400) {
       final msg = body is Map

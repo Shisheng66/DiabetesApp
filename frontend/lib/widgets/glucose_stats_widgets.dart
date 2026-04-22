@@ -194,7 +194,7 @@ class HbA1cBanner extends StatelessWidget {
   final double avgGlucose;
   final int dayCount;
 
-  /// IFCC 公式：HbA1c(%) = (平均血糖 mmol/L + 2.59) / 1.59
+  /// ADAG 估算公式：HbA1c(%) = (平均血糖 mmol/L + 2.59) / 1.59
   double get _estimated => (avgGlucose + 2.59) / 1.59;
 
   String get _riskLabel {
@@ -258,7 +258,7 @@ class HbA1cBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '基于近$dayCount天平均血糖 ${avgGlucose.toStringAsFixed(1)} mmol/L 估算，仅供参考，不能替代化验结果',
+                  '基于近$dayCount天平均血糖 ${avgGlucose.toStringAsFixed(1)} mmol/L 估算，仅供参考，不能替代化验结果；请确保统计窗口与界面展示一致',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF9AA8A6),

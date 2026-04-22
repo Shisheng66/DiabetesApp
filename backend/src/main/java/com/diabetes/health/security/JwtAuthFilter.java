@@ -21,6 +21,7 @@ import java.util.Collections;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -28,7 +29,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader("Authorization");
         if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
-            if (jwtUtil.validate(token)) {
+            if (jwtUtil.validate(token) && !tokenBlacklistService.isRevoked(token)) {
                 Claims claims = jwtUtil.parse(token);
                 Long userId = Long.parseLong(claims.getSubject());
                 String phone = claims.get("phone", String.class);

@@ -4,6 +4,7 @@ import 'dart:io';
 class ApiConfig {
   static const String apiPrefix = '/api';
   static const String buildTimeBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
   /// Add common LAN candidates that this project often runs on.
   static const List<String> lanBaseUrls = [
@@ -13,6 +14,10 @@ class ApiConfig {
   ];
 
   static List<String> get baseUrlCandidates {
+    if (isProduction) {
+      return buildTimeBaseUrl.isEmpty ? const [] : [buildTimeBaseUrl];
+    }
+
     final candidates = <String>[];
 
     if (buildTimeBaseUrl.isNotEmpty) {

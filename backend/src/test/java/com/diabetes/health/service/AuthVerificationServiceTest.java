@@ -2,12 +2,15 @@ package com.diabetes.health.service;
 
 import com.diabetes.health.config.AuthVerificationProperties;
 import com.diabetes.health.dto.AuthDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.diabetes.health.repository.UserAccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +26,9 @@ class AuthVerificationServiceTest {
     @Mock
     private SmsSender smsSender;
 
+    @Mock
+    private StringRedisTemplate redisTemplate;
+
     private AuthVerificationService authVerificationService;
 
     @BeforeEach
@@ -32,7 +38,15 @@ class AuthVerificationServiceTest {
         properties.setSmsExpireSeconds(300);
         properties.setSmsCooldownSeconds(60);
         properties.setExposeDebugSmsCode(true);
-        authVerificationService = new AuthVerificationService(properties, userAccountRepository, smsSender);
+        org.mockito.Mockito.when(redisTemplate.opsForValue())
+                .thenThrow(new RedisConnectionFailureException("redis unavailable in unit test"));
+        authVerificationService = new AuthVerificationService(
+                properties,
+                userAccountRepository,
+                smsSender,
+                redisTemplate,
+                new ObjectMapper().findAndRegisterModules()
+        );
     }
 
     @Test

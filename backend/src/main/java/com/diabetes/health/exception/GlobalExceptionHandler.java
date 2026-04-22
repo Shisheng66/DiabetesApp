@@ -1,5 +1,6 @@
 package com.diabetes.health.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -42,5 +44,14 @@ public class GlobalExceptionHandler {
         body.put("errors", errors);
         body.put("status", 400);
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGeneral(Exception e) {
+        log.error("Unhandled exception", e);
+        Map<String, Object> body = new HashMap<>();
+        body.put("message", "服务器内部错误，请稍后重试");
+        body.put("status", 500);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 }

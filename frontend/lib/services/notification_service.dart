@@ -4,6 +4,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import 'api_service.dart';
 
 class NotificationService {
@@ -30,7 +32,8 @@ class NotificationService {
     if (Platform.isAndroid) {
       final androidImpl = _plugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       await androidImpl?.requestNotificationsPermission();
     }
 
@@ -59,8 +62,8 @@ class NotificationService {
     }
 
     for (final item in reminderList) {
-      final reminder = _asMap(item);
-      final id = _toInt(reminder['id']);
+      final reminder = asMap(item);
+      final id = toInt(reminder['id']);
       final enabled = reminder['enabled'] == true;
       final timeRaw = reminder['timeOfDay']?.toString();
       if (id == null || !enabled || timeRaw == null || timeRaw.isEmpty) {
@@ -126,42 +129,27 @@ class NotificationService {
   }
 
   static String _buildTitle(Map<String, dynamic> reminder) {
-    final type = (reminder['type'] ?? '').toString();
+    final type = DisplayText.reminderType(reminder['type']);
     final remark = (reminder['remark'] ?? '').toString().toUpperCase();
-    if (type == 'GLUCOSE_TEST') {
+    if (type == '血糖提醒') {
       if (remark == 'FASTING') return '空腹血糖提醒';
       if (remark == 'POST_MEAL') return '餐后血糖提醒';
       if (remark == 'BEFORE_SLEEP') return '睡前血糖提醒';
       return '血糖记录提醒';
     }
-    if (type == 'MEDICINE') return '用药提醒';
-    if (type == 'EXERCISE') return '运动提醒';
-    if (type == 'DIET') return '饮食提醒';
+    if (type == '用药提醒') return '用药提醒';
+    if (type == '运动提醒') return '运动提醒';
+    if (type == '饮食提醒') return '饮食提醒';
     return '健康提醒';
   }
 
   static String _buildBody(Map<String, dynamic> reminder) {
-    final type = (reminder['type'] ?? '').toString();
-    if (type == 'GLUCOSE_TEST') {
+    final type = DisplayText.reminderType(reminder['type']);
+    if (type == '血糖提醒') {
       return '请按时记录今天的血糖数据，保持连续追踪。';
     }
     final remark = (reminder['remark'] ?? '').toString().trim();
     if (remark.isNotEmpty) return remark;
     return '记得完成今天的健康任务。';
   }
-
-  static Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) {
-      return value.map((key, val) => MapEntry('$key', val));
-    }
-    return const <String, dynamic>{};
-  }
-
-  static int? _toInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse('$value');
-  }
 }
-

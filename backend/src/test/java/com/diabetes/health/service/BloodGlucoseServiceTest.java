@@ -67,7 +67,7 @@ class BloodGlucoseServiceTest {
         verify(recordRepository).save(recordCaptor.capture());
 
         assertThat(recordCaptor.getValue().getAbnormalFlag()).isEqualTo(BloodGlucoseRecord.AbnormalFlag.LOW);
-        assertThat(response.getAbnormalFlag()).isEqualTo(BloodGlucoseRecord.AbnormalFlag.LOW.name());
+        assertThat(response.getAbnormalFlag()).isEqualTo("偏低");
         verify(abnormalEventRepository).save(any());
     }
 }

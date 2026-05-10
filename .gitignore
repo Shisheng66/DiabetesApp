@@ -32,3 +32,24 @@ frontend/android/app/.cxx/
 frontend/windows/flutter/ephemeral/
 frontend/linux/flutter/ephemeral/
 frontend/macos/Flutter/ephemeral/
+
+# Secrets and local runtime
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+*.err
+*.pid
+
+# Build outputs
+**/target/
+**/build/
+**/.dart_tool/
+**/.gradle/
+
+# IDE
+.idea/
+.vscode/

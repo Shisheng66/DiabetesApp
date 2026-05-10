@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -22,6 +23,8 @@ public class StartupValidator {
     private final JwtProperties jwtProperties;
     private final AppProperties appProperties;
     private final AuthVerificationProperties authVerificationProperties;
+    private final SmsProperties smsProperties;
+    private final StringRedisTemplate redisTemplate;
     private final Environment environment;
 
     @PostConstruct
@@ -36,6 +39,9 @@ public class StartupValidator {
 
         // 验证认证配置
         validateAuthConfig();
+
+        // 生产环境验证外部依赖
+        validateProductionDependencies();
         
         log.info("配置验证通过！");
     }
@@ -67,16 +73,56 @@ public class StartupValidator {
         if (appProperties.getCors() == null) {
             throw new IllegalStateException("CORS 配置不能为空");
         }
+
+        boolean prod = isProd();
+        String allowedOrigins = appProperties.getCors().getAllowedOrigins();
+        if (prod && (allowedOrigins == null || allowedOrigins.isBlank() || allowedOrigins.contains("*"))) {
+            throw new IllegalStateException("生产环境必须通过 APP_CORS_ALLOWED_ORIGINS 配置明确的前端域名，不能使用通配符");
+        }
         
         log.debug("✓ 应用配置验证通过");
     }
 
     private void validateAuthConfig() {
-        boolean prod = Arrays.asList(environment.getActiveProfiles()).contains("prod");
-        if (prod && authVerificationProperties.isExposeDebugSmsCode()) {
+        if (isProd() && authVerificationProperties.isExposeDebugSmsCode()) {
             throw new IllegalStateException("生产环境禁止开启 expose-debug-sms-code");
         }
 
         log.debug("✓ 认证配置验证通过");
+    }
+
+    private void validateProductionDependencies() {
+        if (!isProd()) {
+            return;
+        }
+
+        try {
+            String pong = redisTemplate.getConnectionFactory().getConnection().ping();
+            if (pong == null || pong.isBlank()) {
+                throw new IllegalStateException("Redis ping 没有返回有效结果");
+            }
+        } catch (Exception ex) {
+            throw new IllegalStateException("生产环境必须连接可用 Redis，用于验证码与登出黑名单", ex);
+        }
+
+        if (!"http".equalsIgnoreCase(smsProperties.getProvider())) {
+            throw new IllegalStateException("生产环境短信 provider 目前仅支持 http");
+        }
+        if (smsProperties.getEndpoint() == null || smsProperties.getEndpoint().isBlank()) {
+            throw new IllegalStateException("生产环境必须配置 APP_SMS_ENDPOINT");
+        }
+        if (smsProperties.getToken() == null || smsProperties.getToken().isBlank()) {
+            throw new IllegalStateException("生产环境必须配置 APP_SMS_TOKEN");
+        }
+        if (smsProperties.getEndpoint().contains("example.com")
+                || "replace-with-provider-token".equalsIgnoreCase(smsProperties.getToken())) {
+            throw new IllegalStateException("生产环境短信配置仍是占位值，请替换为真实短信平台 APP_SMS_ENDPOINT / APP_SMS_TOKEN");
+        }
+
+        log.debug("✓ 生产外部依赖验证通过");
+    }
+
+    private boolean isProd() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod");
     }
 }

@@ -1,5 +1,7 @@
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 
+import '../utils/json_helpers.dart';
+
 class PhotoFoodEstimate {
   PhotoFoodEstimate({
     required this.food,
@@ -111,7 +113,7 @@ class PhotoFoodEstimatorService {
       if (matchedFood == null) return null;
 
       final amount = _defaultAmount[matchedName] ?? 120;
-      final kcalPer100 = _toDouble(matchedFood['calorieKcalPer100g']) ?? 0;
+      final kcalPer100 = toDouble(matchedFood['calorieKcalPer100g']) ?? 0;
       final estimatedKcal = kcalPer100 * amount / 100.0;
 
       return PhotoFoodEstimate(
@@ -159,10 +161,5 @@ class PhotoFoodEstimatorService {
     );
     if (fuzzy.isNotEmpty) return fuzzy.first;
     return null;
-  }
-
-  static double? _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value');
   }
 }

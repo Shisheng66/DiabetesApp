@@ -11,12 +11,12 @@ import com.diabetes.health.repository.DietRecordRepository;
 import com.diabetes.health.repository.ExerciseRecordRepository;
 import com.diabetes.health.repository.HealthReminderRepository;
 import com.diabetes.health.security.CurrentUser;
+import com.diabetes.health.util.MathUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -50,8 +50,8 @@ public class DashboardService {
         response.setLatestGlucose(glucoseRecords.isEmpty()
                 ? null
                 : BloodGlucoseDto.RecordResponse.from(glucoseRecords.get(0)));
-        response.setTodayTotalCalorieEaten(sum(dietRecords.stream().map(DietRecord::getCalorieKcal).toList()));
-        response.setTodayTotalCalorieBurned(sum(exerciseRecords.stream().map(ExerciseRecord::getCalorieKcal).toList()));
+        response.setTodayTotalCalorieEaten(MathUtil.sum(dietRecords.stream().map(DietRecord::getCalorieKcal).toList()));
+        response.setTodayTotalCalorieBurned(MathUtil.sum(exerciseRecords.stream().map(ExerciseRecord::getCalorieKcal).toList()));
         response.setReminders(buildReminderTexts(remindersFromDb));
         return response;
     }
@@ -77,13 +77,4 @@ public class DashboardService {
         return texts;
     }
 
-    private BigDecimal sum(List<BigDecimal> values) {
-        BigDecimal result = BigDecimal.ZERO;
-        for (BigDecimal value : values) {
-            if (value != null) {
-                result = result.add(value);
-            }
-        }
-        return result.setScale(2, RoundingMode.HALF_UP);
-    }
 }

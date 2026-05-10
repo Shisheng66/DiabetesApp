@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/premium_health_ui.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -61,26 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  double? _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value');
-  }
-
-  List<dynamic> _asList(dynamic value) => value is List ? value : const [];
-
   String _measureTypeText(String raw) {
-    switch (raw) {
-      case 'FASTING':
-        return '空腹';
-      case 'POST_MEAL':
-        return '餐后';
-      case 'BEFORE_SLEEP':
-        return '睡前';
-      case 'RANDOM':
-        return '随机';
-      default:
-        return '暂无时段';
-    }
+    return DisplayText.glucoseMeasure(raw);
   }
 
   String _measureTimeText(dynamic raw) {
@@ -110,9 +94,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final latest = _data?['latestGlucose'] as Map?;
-    final glucose = _toDouble(latest?['valueMmolL']);
-    final eat = _toDouble(_data?['todayTotalCalorieEaten']) ?? 0;
-    final burn = _toDouble(_data?['todayTotalCalorieBurned']) ?? 0;
+    final glucose = toDouble(latest?['valueMmolL']);
+    final eat = toDouble(_data?['todayTotalCalorieEaten']) ?? 0;
+    final burn = toDouble(_data?['todayTotalCalorieBurned']) ?? 0;
     final reminders = (_data?['reminders'] as List?) ?? const [];
     final tone = _glucoseTone(glucose);
 
@@ -315,10 +299,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
+              const Expanded(
                 flex: 4,
                 child: Column(
-                  children: const [
+                  children: [
                     SoftStatPill(text: '空腹/餐后/睡前'),
                     SizedBox(height: 8),
                     SoftStatPill(
@@ -387,10 +371,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _nutritionCaretakerCard() {
     final nutrition = _nutrition;
     if (nutrition == null) {
-      return FrostPanel(
-        tint: const Color(0xFFFFF7EE),
+      return const FrostPanel(
+        tint: Color(0xFFFFF7EE),
         child: Row(
-          children: const [
+          children: [
             Icon(Icons.restaurant_rounded, color: Color(0xFF9A6338)),
             SizedBox(width: 10),
             Expanded(
@@ -408,12 +392,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final score = (_toDouble(nutrition['score']) ?? 0).round();
+    final score = (toDouble(nutrition['score']) ?? 0).round();
     final grade = '${nutrition['grade'] ?? '待评估'}';
     final headline = '${nutrition['headline'] ?? '营养管家已生成今日建议'}';
     final advice = '${nutrition['nextMealAdvice'] ?? ''}';
-    final actions = _asList(nutrition['actionItems']);
-    final risks = _asList(nutrition['riskFlags']);
+    final actions = asList(nutrition['actionItems']);
+    final risks = asList(nutrition['riskFlags']);
 
     return Container(
       padding: const EdgeInsets.all(18),

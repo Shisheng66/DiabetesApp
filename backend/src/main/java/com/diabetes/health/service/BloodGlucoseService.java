@@ -8,6 +8,7 @@ import com.diabetes.health.repository.BloodGlucoseRecordRepository;
 import com.diabetes.health.repository.GlucoseAbnormalEventRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
+import com.diabetes.health.util.PaginationUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -43,12 +44,11 @@ public class BloodGlucoseService {
     public BloodGlucoseDto.RecordResponse create(CurrentUser user, BloodGlucoseDto.CreateRecordRequest req) {
         BloodGlucoseRecord.MeasureType measureType;
         try {
-            measureType = BloodGlucoseRecord.MeasureType.valueOf(req.getMeasureType().toUpperCase().replace("-", "_"));
+            measureType = parseMeasureType(req.getMeasureType());
         } catch (Exception e) {
-            measureType = BloodGlucoseRecord.MeasureType.RANDOM;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "测量时段选择不正确");
         }
-        BloodGlucoseRecord.RecordSource source = "BLE".equalsIgnoreCase(req.getSource())
-                ? BloodGlucoseRecord.RecordSource.BLE : BloodGlucoseRecord.RecordSource.MANUAL;
+        BloodGlucoseRecord.RecordSource source = parseRecordSource(req.getSource());
 
         UserHealthProfile profile = healthProfileRepository.findByUserId(user.getId()).orElse(null);
         BigDecimal targetMin = defaultTargetMin(measureType);
@@ -108,48 +108,36 @@ public class BloodGlucoseService {
     public BloodGlucoseDto.PageResult<BloodGlucoseDto.RecordResponse> list(CurrentUser user,
                                                                            LocalDate startDate, LocalDate endDate,
                                                                            String measureType, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, size);
+        PageRequest pageRequest = PaginationUtils.pageRequest(page, size);
         if (startDate != null && endDate != null) {
             Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
-            List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
             BloodGlucoseRecord.MeasureType typeFilterVal = null;
             if (measureType != null && !measureType.isBlank()) {
                 try {
-                    typeFilterVal = BloodGlucoseRecord.MeasureType.valueOf(measureType.toUpperCase().replace("-", "_"));
+                    typeFilterVal = parseMeasureType(measureType);
                 } catch (Exception ignored) {}
             }
-            final BloodGlucoseRecord.MeasureType typeFilter = typeFilterVal;
-            if (typeFilter != null) {
-                list = list.stream().filter(r -> r.getMeasureType() == typeFilter).toList();
-            }
-            long total = list.size();
-            int from = page * size;
-            int to = Math.min(from + size, list.size());
-            list = from < list.size() ? list.subList(from, to) : List.of();
-            return toPageResult(list, page, size, total);
+            Page<BloodGlucoseRecord> pageResult = typeFilterVal == null
+                    ? recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(
+                    user.getId(), start, end, pageRequest)
+                    : recordRepository.findByUserIdAndMeasureTypeAndMeasureTimeBetweenOrderByMeasureTimeDesc(
+                    user.getId(), typeFilterVal, start, end, pageRequest);
+            return toPageResult(pageResult);
         }
         Page<BloodGlucoseRecord> pageResult = recordRepository.findByUserIdAndDeletedFalseOrderByMeasureTimeDesc(user.getId(), pageRequest);
-        List<BloodGlucoseDto.RecordResponse> resp = pageResult.getContent().stream()
-                .map(BloodGlucoseDto.RecordResponse::from)
-                .toList();
+        return toPageResult(pageResult);
+    }
+
+    private BloodGlucoseDto.PageResult<BloodGlucoseDto.RecordResponse> toPageResult(Page<BloodGlucoseRecord> pageResult) {
         BloodGlucoseDto.PageResult<BloodGlucoseDto.RecordResponse> result = new BloodGlucoseDto.PageResult<>();
-        result.setContent(resp);
+        result.setContent(pageResult.getContent().stream()
+                .map(BloodGlucoseDto.RecordResponse::from)
+                .toList());
         result.setPage(pageResult.getNumber());
         result.setSize(pageResult.getSize());
         result.setTotalElements(pageResult.getTotalElements());
         result.setTotalPages(pageResult.getTotalPages());
-        return result;
-    }
-
-    private BloodGlucoseDto.PageResult<BloodGlucoseDto.RecordResponse> toPageResult(List<BloodGlucoseRecord> list,
-                                                                                     int page, int size, long total) {
-        BloodGlucoseDto.PageResult<BloodGlucoseDto.RecordResponse> result = new BloodGlucoseDto.PageResult<>();
-        result.setContent(list.stream().map(BloodGlucoseDto.RecordResponse::from).toList());
-        result.setPage(page);
-        result.setSize(size);
-        result.setTotalElements(total);
-        result.setTotalPages((int) ((total + size - 1) / size));
         return result;
     }
 
@@ -186,7 +174,7 @@ public class BloodGlucoseService {
             points.add(p);
         }
         BloodGlucoseDto.TrendResponse res = new BloodGlucoseDto.TrendResponse();
-        res.setPeriodType("daily");
+        res.setPeriodType("日趋势");
         res.setPoints(points);
         return res;
     }
@@ -197,7 +185,7 @@ public class BloodGlucoseService {
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = aggregateByDate(list);
         BloodGlucoseDto.TrendResponse res = new BloodGlucoseDto.TrendResponse();
-        res.setPeriodType("weekly");
+        res.setPeriodType("周趋势");
         res.setPoints(points);
         return res;
     }
@@ -210,7 +198,7 @@ public class BloodGlucoseService {
         List<BloodGlucoseRecord> list = recordRepository.findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(user.getId(), start, end);
         List<BloodGlucoseDto.TrendPoint> points = aggregateByDate(list);
         BloodGlucoseDto.TrendResponse res = new BloodGlucoseDto.TrendResponse();
-        res.setPeriodType("monthly");
+        res.setPeriodType("月趋势");
         res.setPoints(points);
         return res;
     }
@@ -220,7 +208,7 @@ public class BloodGlucoseService {
             int page,
             int size
     ) {
-        PageRequest pageRequest = PageRequest.of(page, size);
+        PageRequest pageRequest = PaginationUtils.pageRequest(page, size);
         Page<GlucoseAbnormalEvent> pageResult =
                 abnormalEventRepository.findByUserIdOrderByCreatedAtDesc(
                         user.getId(),
@@ -252,6 +240,25 @@ public class BloodGlucoseService {
             return new BigDecimal("7.8");
         }
         return new BigDecimal("6.1");
+    }
+
+    private BloodGlucoseRecord.MeasureType parseMeasureType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase().replace("-", "_");
+        switch (normalized) {
+            case "空腹" -> { return BloodGlucoseRecord.MeasureType.FASTING; }
+            case "餐后" -> { return BloodGlucoseRecord.MeasureType.POST_MEAL; }
+            case "睡前" -> { return BloodGlucoseRecord.MeasureType.BEFORE_SLEEP; }
+            case "随机" -> { return BloodGlucoseRecord.MeasureType.RANDOM; }
+            default -> { return BloodGlucoseRecord.MeasureType.valueOf(normalized); }
+        }
+    }
+
+    private BloodGlucoseRecord.RecordSource parseRecordSource(String value) {
+        String normalized = value == null ? "MANUAL" : value.trim().toUpperCase().replace("-", "_");
+        if ("设备同步".equals(normalized) || "BLE".equals(normalized)) {
+            return BloodGlucoseRecord.RecordSource.BLE;
+        }
+        return BloodGlucoseRecord.RecordSource.MANUAL;
     }
 
     private List<BloodGlucoseDto.TrendPoint> aggregateByDate(List<BloodGlucoseRecord> records) {

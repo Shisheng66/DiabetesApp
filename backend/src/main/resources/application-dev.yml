@@ -39,4 +39,4 @@ app:
     captcha-expire-seconds: 180
     sms-expire-seconds: 300
     sms-cooldown-seconds: 60
-    expose-debug-sms-code: true
+    expose-debug-sms-code: false

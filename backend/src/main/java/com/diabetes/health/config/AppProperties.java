@@ -32,7 +32,7 @@ public class AppProperties {
         /**
          * 允许的源
          */
-        private String allowedOrigins = "*";
+        private String allowedOrigins = "http://localhost:*,http://127.0.0.1:*";
 
         /**
          * 允许的方法

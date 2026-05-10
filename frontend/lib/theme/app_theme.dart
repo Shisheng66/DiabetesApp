@@ -6,6 +6,20 @@ class AppTheme {
   static const Color _coral = Color(0xFFF28B57);
   static const Color _ink = Color(0xFF15353A);
 
+  // Semantic colors
+  static const Color error = Color(0xFFC53A2E);
+  static const Color warning = Color(0xFFE08A22);
+  static const Color community = Color(0xFF4375C8);
+  static const Color secondaryText = Color(0xFF5A7673);
+  static const Color mutedText = Color(0xFF9AA8A6);
+
+  // Unified dark text (fix inconsistent hex values across screens)
+  static const Color darkText = Color(0xFF15353A);
+
+  // Hero gradient presets
+  static const List<Color> heroGradient = [Color(0xFF0A887B), Color(0xFF2DA391), Color(0xFF6AC7B3)];
+  static const List<Color> communityGradient = [Color(0xFF4375C8), Color(0xFF6A99E5), Color(0xFF99B7F3)];
+
   static ThemeData light() {
     final scheme =
         ColorScheme.fromSeed(

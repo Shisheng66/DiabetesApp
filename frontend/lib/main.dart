@@ -6,28 +6,53 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
 
+import 'providers/auth_provider.dart';
+import 'providers/connection_provider.dart';
+import 'providers/dashboard_provider.dart';
+import 'providers/glucose_provider.dart';
+import 'providers/diet_provider.dart';
+import 'providers/exercise_provider.dart';
+import 'providers/community_provider.dart';
+import 'providers/profile_provider.dart';
+import 'providers/reminder_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/connection_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    debugPrint('Flutter error: ${details.exception}');
+    if (kDebugMode) {
+      debugPrint('Flutter error: ${details.exception}');
+    }
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Platform error: $error\n$stack');
+    if (kDebugMode) {
+      debugPrint('Platform error: $error\n$stack');
+    }
     return true;
   };
   await initializeDateFormatting();
   Intl.defaultLocale = 'zh_CN';
-  await NotificationService.init();
   runApp(const DiabetesApp());
+  unawaited(_initBackgroundServices());
+}
+
+Future<void> _initBackgroundServices() async {
+  try {
+    await NotificationService.init();
+  } catch (error) {
+    if (kDebugMode) {
+      debugPrint('Notification init skipped: $error');
+    }
+  }
 }
 
 class DiabetesApp extends StatelessWidget {
@@ -38,19 +63,32 @@ class DiabetesApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: '糖尿病健康管家',
-      navigatorKey: navigatorKey,
-      theme: AppTheme.light(),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectionProvider()..check()),
+        ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider(create: (_) => GlucoseProvider()),
+        ChangeNotifierProvider(create: (_) => DietProvider()),
+        ChangeNotifierProvider(create: (_) => ExerciseProvider()),
+        ChangeNotifierProvider(create: (_) => CommunityProvider()),
+        ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => ReminderProvider()),
       ],
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-      locale: const Locale('zh', 'CN'),
-      home: const AuthGate(),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: '糖尿病健康管家',
+        navigatorKey: navigatorKey,
+        theme: AppTheme.light(),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+        locale: const Locale('zh', 'CN'),
+        home: const AuthGate(),
+      ),
     );
   }
 }
@@ -63,8 +101,6 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  bool _loading = true;
-  bool _signedIn = false;
   StreamSubscription<void>? _authExpiredSub;
 
   @override
@@ -73,16 +109,14 @@ class _AuthGateState extends State<AuthGate> {
     _authExpiredSub = ApiService.onAuthExpired.listen((_) async {
       await AuthService.logout(revokeRemote: false);
       if (!mounted) return;
-      setState(() {
-        _signedIn = false;
-        _loading = false;
-      });
+      context.read<AuthProvider>().setSignedIn(false);
       DiabetesApp.navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (_) => false,
       );
     });
-    _bootstrap();
+    context.read<ConnectionProvider>().check();
+    context.read<AuthProvider>().bootstrap();
   }
 
   @override
@@ -91,24 +125,14 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
-    final signedIn = await AuthService.loadSavedToken();
-    if (signedIn) {
-      await NotificationService.syncFromBackend();
-    }
-    if (!mounted) return;
-    setState(() {
-      _signedIn = signedIn;
-      _loading = false;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    final auth = context.watch<AuthProvider>();
+    if (auth.loading) {
       return const _SplashScreen();
     }
-    return _signedIn ? const MainShell() : const LoginScreen();
+    final child = auth.signedIn ? const MainShell() : const LoginScreen();
+    return Stack(children: [child, const ConnectionBanner()]);
   }
 }
 

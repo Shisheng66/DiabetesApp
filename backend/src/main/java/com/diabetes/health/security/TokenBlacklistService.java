@@ -2,7 +2,8 @@ package com.diabetes.health.security;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,9 @@ public class TokenBlacklistService {
 
     private final Map<String, Instant> fallbackRevokedTokens = new ConcurrentHashMap<>();
     private final AtomicBoolean fallbackLogged = new AtomicBoolean(false);
+
+    @Value("${spring.profiles.active:}")
+    private String activeProfiles;
 
     public void revoke(String token, Instant expiresAt) {
         if (token == null || token.isBlank() || expiresAt == null) {
@@ -64,7 +68,8 @@ public class TokenBlacklistService {
         try {
             redisTemplate.opsForValue().set(KEY_PREFIX + token, "1", ttl);
             return true;
-        } catch (RedisConnectionFailureException ex) {
+        } catch (DataAccessException ex) {
+            failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
             return false;
         }
@@ -73,7 +78,8 @@ public class TokenBlacklistService {
     private Boolean readFromRedis(String token) {
         try {
             return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + token));
-        } catch (RedisConnectionFailureException ex) {
+        } catch (DataAccessException ex) {
+            failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
             return null;
         }
@@ -88,5 +94,17 @@ public class TokenBlacklistService {
         if (fallbackLogged.compareAndSet(false, true)) {
             log.warn("Redis 不可用，Token 黑名单暂时退回到内存存储。生产环境请确保 Redis 已启动。原因: {}", ex.getMessage());
         }
+    }
+
+    private void failIfProdRedisUnavailable(Exception ex) {
+        if (isProd()) {
+            throw new IllegalStateException("生产认证状态依赖 Redis，但当前 Redis 不可用", ex);
+        }
+    }
+
+    private boolean isProd() {
+        return activeProfiles != null && java.util.Arrays.stream(activeProfiles.split(","))
+                .map(String::trim)
+                .anyMatch("prod"::equalsIgnoreCase);
     }
 }

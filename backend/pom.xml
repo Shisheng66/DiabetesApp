@@ -20,6 +20,8 @@
 
     <properties>
         <java.version>17</java.version>
+        <dependency-check.version>12.1.0</dependency-check.version>
+        <dependency-check.skip>true</dependency-check.skip>
     </properties>
 
     <dependencies>
@@ -93,6 +95,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -112,8 +120,36 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>${dependency-check.version}</version>
+                <configuration>
+                    <skip>${dependency-check.skip}</skip>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
-</project>
+    <profiles>
+        <profile>
+            <id>security-scan</id>
+            <properties>
+                <dependency-check.skip>false</dependency-check.skip>
+            </properties>
+        </profile>
+    </profiles>
 
+</project>

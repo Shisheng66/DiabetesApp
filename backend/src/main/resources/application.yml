@@ -31,6 +31,12 @@ server:
   port: 8080
 
 app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*}
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: Authorization,Content-Type,Accept
+    allow-credentials: false
+    max-age: 3600
   jwt:
     secret: ${JWT_SECRET}
     expiration-seconds: 604800
@@ -39,3 +45,9 @@ app:
     sms-expire-seconds: 300
     sms-cooldown-seconds: 60
     expose-debug-sms-code: ${APP_AUTH_EXPOSE_DEBUG_SMS_CODE:false}
+  sms:
+    provider: ${APP_SMS_PROVIDER:http}
+    endpoint: ${APP_SMS_ENDPOINT:}
+    token: ${APP_SMS_TOKEN:}
+    signature: ${APP_SMS_SIGNATURE:}
+    template-id: ${APP_SMS_TEMPLATE_ID:}

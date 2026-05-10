@@ -29,18 +29,8 @@ public class ReminderService {
     @Transactional
     @CacheEvict(value = "dashboard", key = "#user.id")
     public ReminderDto.ReminderResponse create(CurrentUser user, ReminderDto.CreateReminderRequest req) {
-        HealthReminder.ReminderType type;
-        try {
-            type = HealthReminder.ReminderType.valueOf(req.getType().toUpperCase());
-        } catch (Exception e) {
-            type = HealthReminder.ReminderType.MEDICINE;
-        }
-        HealthReminder.RepeatType repeatType = HealthReminder.RepeatType.DAILY;
-        if (req.getRepeatType() != null && !req.getRepeatType().isBlank()) {
-            try {
-                repeatType = HealthReminder.RepeatType.valueOf(req.getRepeatType().toUpperCase());
-            } catch (Exception ignored) {}
-        }
+        HealthReminder.ReminderType type = parseReminderType(req.getType());
+        HealthReminder.RepeatType repeatType = parseRepeatType(req.getRepeatType(), HealthReminder.RepeatType.DAILY);
         HealthReminder reminder = HealthReminder.builder()
                 .userId(user.getId())
                 .type(type)
@@ -69,9 +59,7 @@ public class ReminderService {
         }
         if (req.getTimeOfDay() != null) reminder.setTimeOfDay(req.getTimeOfDay());
         if (req.getRepeatType() != null && !req.getRepeatType().isBlank()) {
-            try {
-                reminder.setRepeatType(HealthReminder.RepeatType.valueOf(req.getRepeatType().toUpperCase()));
-            } catch (Exception ignored) {}
+            reminder.setRepeatType(parseRepeatType(req.getRepeatType(), reminder.getRepeatType()));
         }
         if (req.getEnabled() != null) reminder.setEnabled(req.getEnabled());
         if (req.getRemark() != null) reminder.setRemark(req.getRemark());
@@ -106,5 +94,41 @@ public class ReminderService {
                 .updatedAt(Instant.now())
                 .build();
         userPushTokenRepository.save(token);
+    }
+
+    private HealthReminder.ReminderType parseReminderType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        switch (normalized) {
+            case "血糖提醒" -> { return HealthReminder.ReminderType.GLUCOSE_TEST; }
+            case "用药提醒" -> { return HealthReminder.ReminderType.MEDICINE; }
+            case "运动提醒" -> { return HealthReminder.ReminderType.EXERCISE; }
+            case "饮食提醒" -> { return HealthReminder.ReminderType.DIET; }
+            default -> {
+            }
+        }
+        try {
+            return HealthReminder.ReminderType.valueOf(normalized);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "提醒类型选择不正确");
+        }
+    }
+
+    private HealthReminder.RepeatType parseRepeatType(String value, HealthReminder.RepeatType fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        String normalized = value.trim().toUpperCase();
+        switch (normalized) {
+            case "每天" -> { return HealthReminder.RepeatType.DAILY; }
+            case "工作日" -> { return HealthReminder.RepeatType.WORKDAY; }
+            case "自定义" -> { return HealthReminder.RepeatType.CUSTOM; }
+            default -> {
+            }
+        }
+        try {
+            return HealthReminder.RepeatType.valueOf(normalized);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "重复方式选择不正确");
+        }
     }
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/premium_health_ui.dart';
 
@@ -61,10 +63,10 @@ class _GlucoseReminderScreenState extends State<GlucoseReminderScreen> {
       final list = (res['data'] is List) ? (res['data'] as List) : const [];
 
       for (final raw in list) {
-        final item = _asMap(raw);
-        final type = (item['type'] ?? '').toString().toUpperCase();
+        final item = asMap(raw);
+        final type = DisplayText.reminderType(item['type']);
         final tag = (item['remark'] ?? '').toString().toUpperCase();
-        if (type != 'GLUCOSE_TEST' || !_slots.containsKey(tag)) continue;
+        if (type != '血糖提醒' || !_slots.containsKey(tag)) continue;
 
         _existingByTag[tag] = item;
         final slot = _slots[tag]!;
@@ -309,12 +311,6 @@ class _GlucoseReminderScreenState extends State<GlucoseReminderScreen> {
     if (h == null || m == null) return null;
     if (h < 0 || h > 23 || m < 0 || m > 59) return null;
     return TimeOfDay(hour: h, minute: m);
-  }
-
-  Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return value.map((k, v) => MapEntry('$k', v));
-    return const <String, dynamic>{};
   }
 }
 

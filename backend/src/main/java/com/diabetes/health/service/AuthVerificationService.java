@@ -8,16 +8,27 @@ import com.diabetes.health.repository.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.imageio.ImageIO;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
@@ -46,19 +57,26 @@ public class AuthVerificationService {
     private final Map<String, SmsChallenge> fallbackSmsChallenges = new ConcurrentHashMap<>();
     private final AtomicBoolean fallbackLogged = new AtomicBoolean(false);
 
+    @Value("${spring.profiles.active:}")
+    private String activeProfiles;
+
     public AuthDto.CaptchaResponse createCaptcha() {
         purgeExpired();
 
         String challengeId = UUID.randomUUID().toString();
-        String displayCode = randomCode(4);
+        String code = randomCode(4);
         String salt = UUID.randomUUID().toString().replace("-", "");
         Instant expiresAt = Instant.now().plusSeconds(properties.getCaptchaExpireSeconds());
 
-        saveCaptchaChallenge(challengeId, new CaptchaChallenge(hash(displayCode, salt), salt, expiresAt));
+        saveCaptchaChallenge(challengeId, new CaptchaChallenge(hash(code, salt), salt, expiresAt));
 
         AuthDto.CaptchaResponse response = new AuthDto.CaptchaResponse();
         response.setChallengeId(challengeId);
-        response.setDisplayCode(displayCode);
+        response.setImageMimeType("image/png");
+        response.setImageDataUri(buildCaptchaImageDataUri(code));
+        if (properties.isExposeDebugSmsCode()) {
+            response.setDisplayCode(code);
+        }
         response.setExpiresInSeconds(properties.getCaptchaExpireSeconds());
         return response;
     }
@@ -68,6 +86,7 @@ public class AuthVerificationService {
 
         String phone = request.getPhone().trim();
         AuthDto.SmsScene scene = request.getScene();
+        verifyCaptcha(request.getCaptchaChallengeId(), request.getCaptchaCode(), true);
 
         boolean accountExists = userAccountRepository.existsByPhone(phone);
         if (scene == AuthDto.SmsScene.REGISTER && accountExists) {
@@ -96,7 +115,6 @@ public class AuthVerificationService {
         AuthDto.SendSmsCodeResponse response = new AuthDto.SendSmsCodeResponse();
         response.setCooldownSeconds(properties.getSmsCooldownSeconds());
         response.setExpiresInSeconds(properties.getSmsExpireSeconds());
-        response.setMock(true);
         response.setMessage("验证码已发送，请注意查收短信");
         if (properties.isExposeDebugSmsCode()) {
             response.setDebugCode(code);
@@ -260,7 +278,8 @@ public class AuthVerificationService {
         try {
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(value), ttl);
             return true;
-        } catch (RedisConnectionFailureException | JsonProcessingException ex) {
+        } catch (DataAccessException | JsonProcessingException ex) {
+            failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
             return false;
         }
@@ -273,7 +292,8 @@ public class AuthVerificationService {
                 return null;
             }
             return objectMapper.readValue(raw, type);
-        } catch (RedisConnectionFailureException | JsonProcessingException ex) {
+        } catch (DataAccessException | JsonProcessingException ex) {
+            failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
             return null;
         }
@@ -282,7 +302,8 @@ public class AuthVerificationService {
     private void deleteRedisKey(String key) {
         try {
             redisTemplate.delete(key);
-        } catch (RedisConnectionFailureException ex) {
+        } catch (DataAccessException ex) {
+            failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
         }
     }
@@ -290,6 +311,59 @@ public class AuthVerificationService {
     private void logFallbackOnce(Exception ex) {
         if (fallbackLogged.compareAndSet(false, true)) {
             log.warn("Redis 不可用，验证码状态暂时退回到内存存储。生产环境请确保 Redis 已启动。原因: {}", ex.getMessage());
+        }
+    }
+
+    private void failIfProdRedisUnavailable(Exception ex) {
+        if (isProd()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "认证状态服务暂时不可用，请稍后重试", ex);
+        }
+    }
+
+    private boolean isProd() {
+        return activeProfiles != null && java.util.Arrays.stream(activeProfiles.split(","))
+                .map(String::trim)
+                .anyMatch("prod"::equalsIgnoreCase);
+    }
+
+    private String buildCaptchaImageDataUri(String code) {
+        try {
+            int width = 150;
+            int height = 50;
+            BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = image.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(new Color(236, 248, 244));
+            g.fillRoundRect(0, 0, width, height, 16, 16);
+
+            for (int i = 0; i < 6; i++) {
+                g.setColor(new Color(120 + RANDOM.nextInt(90), 160 + RANDOM.nextInt(70), 150 + RANDOM.nextInt(70), 130));
+                g.setStroke(new BasicStroke(1.4f));
+                g.drawLine(
+                        RANDOM.nextInt(width),
+                        RANDOM.nextInt(height),
+                        RANDOM.nextInt(width),
+                        RANDOM.nextInt(height)
+                );
+            }
+
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
+            for (int i = 0; i < code.length(); i++) {
+                AffineTransform old = g.getTransform();
+                int x = 22 + i * 30;
+                int y = 34 + RANDOM.nextInt(5);
+                g.rotate(Math.toRadians(RANDOM.nextInt(21) - 10), x + 9, y - 10);
+                g.setColor(new Color(12 + RANDOM.nextInt(30), 70 + RANDOM.nextInt(40), 62 + RANDOM.nextInt(30)));
+                g.drawString(String.valueOf(code.charAt(i)), x, y);
+                g.setTransform(old);
+            }
+
+            g.dispose();
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            ImageIO.write(image, "png", output);
+            return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "图形验证码生成失败", ex);
         }
     }
 

@@ -31,7 +31,7 @@ public class UserController {
 
     @PutMapping("/me")
     public void updateMe(@AuthenticationPrincipal CurrentUser user,
-                        @RequestBody UserDto.UpdateMeRequest request) {
+                        @Valid @RequestBody UserDto.UpdateMeRequest request) {
         userService.updateMe(user, request);
     }
 
@@ -42,7 +42,7 @@ public class UserController {
 
     @PutMapping("/me/health-profile")
     public UserDto.HealthProfileResponse updateHealthProfile(@AuthenticationPrincipal CurrentUser user,
-                                                              @RequestBody UserDto.UpdateHealthProfileRequest request) {
+                                                              @Valid @RequestBody UserDto.UpdateHealthProfileRequest request) {
         return userService.updateHealthProfile(user, request);
     }
 

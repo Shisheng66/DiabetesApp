@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
 import '../services/photo_food_estimator_service.dart';
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/app_toast.dart';
 
 class DietScreen extends StatefulWidget {
@@ -74,7 +76,7 @@ class _DietScreenState extends State<DietScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _foods = _list(foodsRes).map(_map).toList();
+        _foods = extractList(foodsRes).map(asMap).toList();
       });
     } catch (_) {}
   }
@@ -116,7 +118,7 @@ class _DietScreenState extends State<DietScreen> {
         analysisRes = null;
       }
 
-      final rows = _list(recordsRes).map(_map).toList()
+      final rows = extractList(recordsRes).map(asMap).toList()
         ..sort(
           (a, b) => _dt(
             b['recordTime'] ?? b['createdAt'],
@@ -127,7 +129,7 @@ class _DietScreenState extends State<DietScreen> {
       setState(() {
         _records = rows;
         _summary = summaryRes;
-        _foods = _list(foodsRes).map(_map).toList();
+        _foods = extractList(foodsRes).map(asMap).toList();
         _mealPlan = planRes;
         _analysis = analysisRes;
         _loading = false;
@@ -147,27 +149,26 @@ class _DietScreenState extends State<DietScreen> {
     }
   }
 
-  List<dynamic> _list(Map<String, dynamic> r) {
-    if (r['data'] is List) return r['data'] as List;
-    if (r['content'] is List) return r['content'] as List;
-    if (r['items'] is List) return r['items'] as List;
-    final d = r['data'];
-    if (d is Map<String, dynamic> && d['content'] is List)
-      return d['content'] as List;
-    return const [];
-  }
-
-  Map<String, dynamic> _map(dynamic v) => v is Map<String, dynamic>
-      ? v
-      : (v is Map
-            ? v.map((k, val) => MapEntry('$k', val))
-            : const <String, dynamic>{});
-  double? _num(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v');
-  String _fmt(dynamic v, {int p = 1}) => _num(v)?.toStringAsFixed(p) ?? '--';
+  String _fmt(dynamic v, {int p = 1}) =>
+      toDouble(v)?.toStringAsFixed(p) ?? '--';
   DateTime _dt(dynamic v) => v is String && DateTime.tryParse(v) != null
       ? DateTime.parse(v).toLocal()
       : DateTime.fromMillisecondsSinceEpoch(0);
-  String _meal(dynamic v) => _mealLabels['$v'] ?? '$v';
+  String _meal(dynamic v) => DisplayText.meal(v);
+  String _mealCode(dynamic v) {
+    switch (DisplayText.meal(v)) {
+      case '早餐':
+        return 'BREAKFAST';
+      case '午餐':
+        return 'LUNCH';
+      case '晚餐':
+        return 'DINNER';
+      case '加餐':
+        return 'SNACK';
+      default:
+        return 'BREAKFAST';
+    }
+  }
 
   Future<void> _pickDate() async {
     final d = await showDatePicker(
@@ -197,7 +198,7 @@ class _DietScreenState extends State<DietScreen> {
 
     final isEdit = editRecord != null;
     var mealType = isEdit
-        ? (editRecord['mealType'] ?? 'BREAKFAST').toString()
+        ? _mealCode(editRecord['mealType'] ?? 'BREAKFAST')
         : 'BREAKFAST';
     var selectedFood = isEdit
         ? (editRecord['foodId'] as int?)
@@ -208,7 +209,9 @@ class _DietScreenState extends State<DietScreen> {
           : (presetAmount?.toStringAsFixed(0) ?? ''),
     );
     final remarkCtrl = TextEditingController(
-      text: isEdit ? (editRecord['remark'] ?? '') : (presetRemark ?? ''),
+      text: isEdit
+          ? (editRecord['remark']?.toString() ?? '')
+          : (presetRemark ?? ''),
     );
 
     await showModalBottomSheet(
@@ -570,6 +573,7 @@ class _DietScreenState extends State<DietScreen> {
           content: Text(
             '食物：${est.food['name']}\n估算重量：${est.amountG.toStringAsFixed(0)}g\n估算热量：${est.estimatedKcal.toStringAsFixed(0)}kcal',
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -594,21 +598,22 @@ class _DietScreenState extends State<DietScreen> {
     }
   }
 
-  List<dynamic> _asList(dynamic value) => value is List ? value : const [];
-
   Widget _nutritionCaretakerPanel() {
     final analysis = _analysis;
     if (analysis == null) return const SizedBox.shrink();
 
-    final score = (_num(analysis['score']) ?? 0).round();
+    final score = (toDouble(analysis['score']) ?? 0).round();
     final grade = '${analysis['grade'] ?? '待评估'}';
     final headline = '${analysis['headline'] ?? '营养管家正在整理今天的饮食结构'}';
     final summary = '${analysis['summary'] ?? ''}';
     final advice = '${analysis['nextMealAdvice'] ?? ''}';
-    final risks = _asList(analysis['riskFlags']);
-    final actions = _asList(analysis['actionItems']);
-    final macros = _asList(analysis['macroBalance']).map(_map).toList();
-    final fiberPct = (_num(analysis['fiberAchievementPct']) ?? 0).clamp(0, 160);
+    final risks = asList(analysis['riskFlags']);
+    final actions = asList(analysis['actionItems']);
+    final macros = asList(analysis['macroBalance']).map(asMap).toList();
+    final fiberPct = (toDouble(analysis['fiberAchievementPct']) ?? 0).clamp(
+      0,
+      160,
+    );
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -772,7 +777,7 @@ class _DietScreenState extends State<DietScreen> {
   }
 
   Widget _macroBalanceStrip(List<Map<String, dynamic>> macros) {
-    final colors = const {
+    const colors = {
       'carb': Color(0xFFFFDFAF),
       'protein': Color(0xFFB8F3DF),
       'fat': Color(0xFFC9DCFF),
@@ -787,7 +792,7 @@ class _DietScreenState extends State<DietScreen> {
         const SizedBox(height: 10),
         ...macros.map((item) {
           final key = '${item['key']}';
-          final share = (_num(item['calorieSharePct']) ?? 0).clamp(0, 100);
+          final share = (toDouble(item['calorieSharePct']) ?? 0).clamp(0, 100);
           final status = '${item['status'] ?? 'OK'}';
           final color = colors[key] ?? const Color(0xFFFFDFAF);
           final label = '${item['label'] ?? ''}';
@@ -934,7 +939,7 @@ class _DietScreenState extends State<DietScreen> {
   @override
   Widget build(BuildContext context) {
     final planItems = _mealPlan?['items'] is List
-        ? (_mealPlan!['items'] as List).map(_map).toList()
+        ? (_mealPlan!['items'] as List).map(asMap).toList()
         : <Map<String, dynamic>>[];
 
     return Scaffold(
@@ -1084,12 +1089,42 @@ class _DietScreenState extends State<DietScreen> {
                                       Icons.delete_outline_rounded,
                                     ),
                                     onPressed: () async {
-                                      await ApiService.delete(
-                                        '/diet/meal-plans/${e['id']}',
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text('确认删除'),
+                                          content: const Text('确定要删除这条记录吗？'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text('取消'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: const Text(
+                                                '删除',
+                                                style: TextStyle(
+                                                  color: Color(0xFFC53A2E),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       );
-                                      await _loadAll();
-                                      if (!mounted) return;
-                                      AppToast.success(context, '食谱删除成功');
+                                      if (confirmed != true) return;
+                                      try {
+                                        await ApiService.delete(
+                                          '/diet/meal-plans/${e['id']}',
+                                        );
+                                        await _loadAll();
+                                        if (!context.mounted) return;
+                                        AppToast.success(context, '食谱删除成功');
+                                      } catch (_) {
+                                        if (!context.mounted) return;
+                                        AppToast.info(context, '删除失败，请稍后重试');
+                                      }
                                     },
                                   ),
                                 ),
@@ -1142,12 +1177,56 @@ class _DietScreenState extends State<DietScreen> {
                                           Icons.delete_outline_rounded,
                                         ),
                                         onPressed: () async {
-                                          await ApiService.delete(
-                                            '/diet/records/${r['id']}',
-                                          );
-                                          await _loadAll();
-                                          if (!mounted) return;
-                                          AppToast.success(context, '记录删除成功');
+                                          final confirmed =
+                                              await showDialog<bool>(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  title: const Text('确认删除'),
+                                                  content: const Text(
+                                                    '确定要删除这条记录吗？',
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                            ctx,
+                                                            false,
+                                                          ),
+                                                      child: const Text('取消'),
+                                                    ),
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                            ctx,
+                                                            true,
+                                                          ),
+                                                      child: const Text(
+                                                        '删除',
+                                                        style: TextStyle(
+                                                          color: Color(
+                                                            0xFFC53A2E,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                          if (confirmed != true) return;
+                                          try {
+                                            await ApiService.delete(
+                                              '/diet/records/${r['id']}',
+                                            );
+                                            await _loadAll();
+                                            if (!context.mounted) return;
+                                            AppToast.success(context, '记录删除成功');
+                                          } catch (_) {
+                                            if (!context.mounted) return;
+                                            AppToast.info(
+                                              context,
+                                              '删除失败，请稍后重试',
+                                            );
+                                          }
                                         },
                                       ),
                                     ],

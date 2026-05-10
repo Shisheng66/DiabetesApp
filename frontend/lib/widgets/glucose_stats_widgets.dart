@@ -49,30 +49,33 @@ class TirCard extends StatelessWidget {
               SizedBox(
                 width: 120,
                 height: 120,
-                child: PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 32,
-                    sections: [
-                      PieChartSectionData(
-                        value: inRange.toDouble(),
-                        color: const Color(0xFF0B8A7D),
-                        radius: 26,
-                        showTitle: false,
-                      ),
-                      PieChartSectionData(
-                        value: high.toDouble(),
-                        color: const Color(0xFFC53A2E),
-                        radius: 22,
-                        showTitle: false,
-                      ),
-                      PieChartSectionData(
-                        value: low.toDouble(),
-                        color: const Color(0xFFE08A22),
-                        radius: 22,
-                        showTitle: false,
-                      ),
-                    ],
+                child: IgnorePointer(
+                  child: PieChart(
+                    PieChartData(
+                      pieTouchData: PieTouchData(enabled: false),
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 32,
+                      sections: [
+                        PieChartSectionData(
+                          value: inRange.toDouble(),
+                          color: const Color(0xFF0B8A7D),
+                          radius: 26,
+                          showTitle: false,
+                        ),
+                        PieChartSectionData(
+                          value: high.toDouble(),
+                          color: const Color(0xFFC53A2E),
+                          radius: 22,
+                          showTitle: false,
+                        ),
+                        PieChartSectionData(
+                          value: low.toDouble(),
+                          color: const Color(0xFFE08A22),
+                          radius: 22,
+                          showTitle: false,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

@@ -17,10 +17,33 @@ public interface BloodGlucoseRecordRepository extends JpaRepository<BloodGlucose
 
     Optional<BloodGlucoseRecord> findByIdAndDeletedFalse(Long id);
 
+    @Query(
+            value = "SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC",
+            countQuery = "SELECT COUNT(r) FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureTime >= :start AND r.measureTime < :end"
+    )
+    Page<BloodGlucoseRecord> findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(
+            @Param("userId") Long userId,
+            @Param("start") Instant start,
+            @Param("end") Instant end,
+            Pageable pageable
+    );
+
     @Query("SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC")
     List<BloodGlucoseRecord> findByUserIdAndMeasureTimeBetweenOrderByMeasureTimeDesc(
             @Param("userId") Long userId,
             @Param("start") Instant start,
             @Param("end") Instant end
+    );
+
+    @Query(
+            value = "SELECT r FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureType = :measureType AND r.measureTime >= :start AND r.measureTime < :end ORDER BY r.measureTime DESC",
+            countQuery = "SELECT COUNT(r) FROM BloodGlucoseRecord r WHERE r.userId = :userId AND r.deleted = false AND r.measureType = :measureType AND r.measureTime >= :start AND r.measureTime < :end"
+    )
+    Page<BloodGlucoseRecord> findByUserIdAndMeasureTypeAndMeasureTimeBetweenOrderByMeasureTimeDesc(
+            @Param("userId") Long userId,
+            @Param("measureType") BloodGlucoseRecord.MeasureType measureType,
+            @Param("start") Instant start,
+            @Param("end") Instant end,
+            Pageable pageable
     );
 }

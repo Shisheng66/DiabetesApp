@@ -1,13 +1,14 @@
-import 'dart:math';
+import 'dart:async';
+import 'dart:math' as math;
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/glucose_stats_widgets.dart';
-import '../widgets/premium_health_ui.dart';
+import '../widgets/glucose_rhythm_painter.dart';
 
 class GlucoseScreen extends StatefulWidget {
   const GlucoseScreen({super.key});
@@ -26,17 +27,11 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
   };
 
   DateTime _date = DateTime.now();
-  String _range = 'WEEK';
   String _typeFilter = 'ALL';
   bool _loading = true;
-  bool _switchingTrend = false;
   String? _error;
   List<Map<String, dynamic>> _records = [];
-  List<Map<String, dynamic>> _trend = [];
   Map<String, dynamic>? _profile;
-
-  // 【Fix】ScrollController 保持滚动位置，添加记录后不跳回顶部
-  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -44,37 +39,39 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
     _loadAll();
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  // 【Fix】所有数据并发拉取后一次性 setState，消除中间状态导致的卡住问题
-  Future<void> _loadAll() async {
+  Future<void> _loadAll({bool showLoading = true}) async {
     if (!mounted) return;
     setState(() {
-      _loading = true;
+      if (showLoading) {
+        _loading = true;
+      }
       _error = null;
     });
-    try {
-      final results = await Future.wait([
-        _fetchRecords(),
-        _fetchTrend(),
-        _fetchProfile(),
-      ]);
 
+    try {
+      final results = await Future.wait<dynamic>([
+        _fetchRecords().timeout(const Duration(seconds: 12)),
+        _fetchProfile().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        ),
+      ]);
       if (!mounted) return;
       setState(() {
         _records = results[0] as List<Map<String, dynamic>>;
-        _trend = results[1] as List<Map<String, dynamic>>;
-        _profile = results[2] as Map<String, dynamic>?;
+        _profile = results[1] as Map<String, dynamic>?;
         _loading = false;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message;
+        _loading = false;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _error = '连接服务超时，请稍后重试';
         _loading = false;
       });
     } catch (_) {
@@ -90,30 +87,13 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
     final day = DateFormat('yyyy-MM-dd').format(_date);
     final res = await ApiService.get(
       '/blood-glucose/records',
-      query: {'startDate': day, 'endDate': day, 'page': '0', 'size': '120'},
+      query: {'startDate': day, 'endDate': day, 'page': '0', 'size': '200'},
     );
-    final list = _extractList(res).map(_asMap).toList();
+    final list = extractList(res).map(asMap).toList();
     list.sort(
       (a, b) => _toDate(b['measureTime']).compareTo(_toDate(a['measureTime'])),
     );
     return list;
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchTrend() async {
-    Map<String, dynamic> res;
-    if (_range == 'WEEK') {
-      final weekStart = _date.subtract(Duration(days: _date.weekday - 1));
-      res = await ApiService.get(
-        '/blood-glucose/trend/weekly',
-        query: {'weekStart': DateFormat('yyyy-MM-dd').format(weekStart)},
-      );
-    } else {
-      res = await ApiService.get(
-        '/blood-glucose/trend/monthly',
-        query: {'year': '${_date.year}', 'month': '${_date.month}'},
-      );
-    }
-    return ((res['points'] as List?) ?? const []).map(_asMap).toList();
   }
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
@@ -124,119 +104,6 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
     }
   }
 
-  // 【Fix】切换周/月时单独拉趋势，不重置记录列表
-  Future<void> _switchTrend(String newRange) async {
-    if (_switchingTrend) return;
-    setState(() {
-      _range = newRange;
-      _switchingTrend = true;
-    });
-    try {
-      final data = await _fetchTrend();
-      if (!mounted) return;
-      setState(() {
-        _trend = data;
-        _switchingTrend = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _switchingTrend = false);
-    }
-  }
-
-  // ── 工具方法 ────────────────────────────────────────────────
-
-  List<dynamic> _extractList(Map<String, dynamic> res) {
-    if (res['content'] is List) return res['content'] as List;
-    if (res['data'] is List) return res['data'] as List;
-    final data = res['data'];
-    if (data is Map<String, dynamic> && data['content'] is List) {
-      return data['content'] as List;
-    }
-    return const [];
-  }
-
-  Map<String, dynamic> _asMap(dynamic v) {
-    if (v is Map<String, dynamic>) return v;
-    if (v is Map) return v.map((k, val) => MapEntry('$k', val));
-    return const <String, dynamic>{};
-  }
-
-  double? _toDouble(dynamic v) {
-    final p = v is num ? v.toDouble() : double.tryParse('$v');
-    if (p == null || !p.isFinite) return null;
-    return p;
-  }
-
-  DateTime _toDate(dynamic v) {
-    if (v is String) {
-      final d = DateTime.tryParse(v);
-      if (d != null) return d.toLocal();
-    }
-    return DateTime.fromMillisecondsSinceEpoch(0);
-  }
-
-  double get _targetMin {
-    final v = _toDouble(_profile?['targetFbgMin']) ?? 3.9;
-    return v <= 0 ? 3.9 : v;
-  }
-
-  double get _targetMax {
-    final v = _toDouble(_profile?['targetFbgMax']) ?? 7.8;
-    return v <= 0 ? 7.8 : v;
-  }
-
-  List<Map<String, dynamic>> get _rows => _typeFilter == 'ALL'
-      ? _records
-      : _records.where((e) => '${e['measureType']}' == _typeFilter).toList();
-
-  ({
-    int count,
-    int normal,
-    int low,
-    int high,
-    double? avg,
-    double? min,
-    double? max,
-  })
-  get _stats {
-    final values = _records
-        .map((e) => _toDouble(e['valueMmolL']))
-        .whereType<double>()
-        .toList();
-    if (values.isEmpty)
-      return (
-        count: 0,
-        normal: 0,
-        low: 0,
-        high: 0,
-        avg: null,
-        min: null,
-        max: null,
-      );
-    var normal = 0;
-    var low = 0;
-    var high = 0;
-    for (final v in values) {
-      if (v < _targetMin)
-        low++;
-      else if (v > _targetMax)
-        high++;
-      else
-        normal++;
-    }
-    return (
-      count: values.length,
-      normal: normal,
-      low: low,
-      high: high,
-      avg: values.reduce((a, b) => a + b) / values.length,
-      min: values.reduce(min),
-      max: values.reduce(max),
-    );
-  }
-
-  // ── 日期选择 ─────────────────────────────────────────────────
-
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -246,10 +113,8 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
     );
     if (picked == null) return;
     setState(() => _date = picked);
-    _loadAll();
+    await _loadAll();
   }
-
-  // ── 新增 / 删除 ──────────────────────────────────────────────
 
   Future<void> _addRecord([String defaultType = 'FASTING']) async {
     final valueCtrl = TextEditingController();
@@ -258,894 +123,322 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
     var measuredTime = TimeOfDay.fromDateTime(DateTime.now());
     var submitting = false;
 
-    await showModalBottomSheet<void>(
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModal) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '记录每日血糖',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: type,
-                  decoration: const InputDecoration(labelText: '测量时段'),
-                  items: const [
-                    DropdownMenuItem(value: 'FASTING', child: Text('空腹')),
-                    DropdownMenuItem(value: 'POST_MEAL', child: Text('餐后')),
-                    DropdownMenuItem(value: 'BEFORE_SLEEP', child: Text('睡前')),
-                    DropdownMenuItem(value: 'RANDOM', child: Text('随机')),
-                  ],
-                  onChanged: (v) => setModal(() => type = v ?? type),
-                ),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: ctx,
-                      initialTime: measuredTime,
-                    );
-                    if (picked == null) return;
-                    setModal(() => measuredTime = picked);
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: '测量时间'),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.schedule_rounded,
-                          size: 18,
-                          color: Color(0xFF0B8A7D),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(measuredTime.format(ctx)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: valueCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: '血糖值 (mmol/L)',
-                    hintText: '例如 6.1',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: remarkCtrl,
-                  decoration: const InputDecoration(labelText: '备注（可选）'),
-                ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: submitting
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            Future<void> submit() async {
+              if (submitting) return;
+              final value = double.tryParse(valueCtrl.text.trim());
+              if (value == null || value <= 0 || value > 35) {
+                AppToast.info(context, '请输入合理的血糖值');
+                return;
+              }
+              setModal(() => submitting = true);
+              final localTime = DateTime(
+                _date.year,
+                _date.month,
+                _date.day,
+                measuredTime.hour,
+                measuredTime.minute,
+              );
+              try {
+                await ApiService.post('/blood-glucose/records', {
+                  'measureType': type,
+                  'measureTime': localTime.toUtc().toIso8601String(),
+                  'valueMmolL': value,
+                  'source': 'MANUAL',
+                  'remark': remarkCtrl.text.trim().isEmpty
                       ? null
-                      : () async {
-                          final value = double.tryParse(valueCtrl.text.trim());
-                          if (value == null || value <= 0) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('请输入有效血糖值')),
-                            );
-                            return;
-                          }
-                          setModal(() => submitting = true);
-                          try {
-                            final local = DateTime(
-                              _date.year,
-                              _date.month,
-                              _date.day,
-                              measuredTime.hour,
-                              measuredTime.minute,
-                            );
-                            await ApiService.post('/blood-glucose/records', {
-                              'measureTime': local.toUtc().toIso8601String(),
-                              'measureType': type,
-                              'valueMmolL': value,
-                              'source': 'MANUAL',
-                              'remark': remarkCtrl.text.trim().isEmpty
-                                  ? null
-                                  : remarkCtrl.text.trim(),
-                            });
-                            if (!ctx.mounted) return;
-                            Navigator.pop(ctx);
-                            // 原子性重新加载全部数据
-                            await _loadAll();
-                            if (!mounted) return;
-                            AppToast.success(context, '血糖记录添加成功');
-                          } on ApiException catch (e) {
-                            ScaffoldMessenger.of(
-                              ctx,
-                            ).showSnackBar(SnackBar(content: Text(e.message)));
-                          } finally {
-                            if (ctx.mounted) {
-                              setModal(() => submitting = false);
-                            }
-                          }
-                        },
-                  child: submitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('保存记录'),
+                      : remarkCtrl.text.trim(),
+                });
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop(true);
+              } on ApiException catch (e) {
+                if (!mounted) return;
+                AppToast.info(context, e.message);
+                if (ctx.mounted) {
+                  setModal(() => submitting = false);
+                }
+              } catch (_) {
+                if (!mounted) return;
+                AppToast.info(context, '添加失败，请稍后重试');
+                if (ctx.mounted) {
+                  setModal(() => submitting = false);
+                }
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '记录每日血糖',
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF153C38),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: type,
+                      decoration: const InputDecoration(labelText: '测量时段'),
+                      items: const [
+                        DropdownMenuItem(value: 'FASTING', child: Text('空腹')),
+                        DropdownMenuItem(value: 'POST_MEAL', child: Text('餐后')),
+                        DropdownMenuItem(
+                          value: 'BEFORE_SLEEP',
+                          child: Text('睡前'),
+                        ),
+                        DropdownMenuItem(value: 'RANDOM', child: Text('随机')),
+                      ],
+                      onChanged: (value) =>
+                          setModal(() => type = value ?? type),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: valueCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: '血糖值',
+                        suffixText: 'mmol/L',
+                        hintText: '例如 6.8',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: submitting
+                          ? null
+                          : () async {
+                              final picked = await showTimePicker(
+                                context: ctx,
+                                initialTime: measuredTime,
+                              );
+                              if (picked != null && ctx.mounted) {
+                                setModal(() => measuredTime = picked);
+                              }
+                            },
+                      icon: const Icon(Icons.schedule_rounded),
+                      label: Text('测量时间：${measuredTime.format(ctx)}'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: remarkCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: '备注',
+                        hintText: '可填写饮食、运动或身体状态',
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    FilledButton(
+                      onPressed: submitting ? null : submit,
+                      child: submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('保存记录'),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
+
+    if (!mounted) {
+      valueCtrl.dispose();
+      remarkCtrl.dispose();
+      return;
+    }
+    valueCtrl.dispose();
+    remarkCtrl.dispose();
+
+    if (saved == true) {
+      AppToast.success(context, '血糖记录已添加');
+      await _loadAll(showLoading: false);
+    }
   }
 
   Future<void> _deleteRecord(dynamic id) async {
     if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除记录'),
+        content: const Text('确定删除这条血糖记录吗？'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     try {
       await ApiService.delete('/blood-glucose/records/$id');
-      await _loadAll();
       if (!mounted) return;
-      AppToast.success(context, '血糖记录删除成功');
+      AppToast.success(context, '血糖记录已删除');
+      await _loadAll(showLoading: false);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppToast.info(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.info(context, '删除失败，请稍后重试');
     }
   }
 
-  // ── UI 组件 ──────────────────────────────────────────────────
-
-  String _bucket(DateTime dt) {
-    final h = dt.hour;
-    if (h >= 5 && h < 11) return '上午';
-    if (h >= 11 && h < 15) return '中午';
-    if (h >= 15 && h < 19) return '下午';
-    return '晚间';
+  DateTime _toDate(dynamic value) {
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed.toLocal();
+    }
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  Color _valueColor(double v) => v < _targetMin
-      ? const Color(0xFFE08A22)
-      : (v > _targetMax ? const Color(0xFFC53A2E) : const Color(0xFF0B8A7D));
-  String _status(double v) =>
-      v < _targetMin ? '偏低' : (v > _targetMax ? '偏高' : '正常');
+  double get _targetMin {
+    final value = toDouble(_profile?['targetFbgMin']) ?? 3.9;
+    return value > 0 ? value : 3.9;
+  }
 
-  Widget _summaryCard() {
-    final s = _stats;
-    final rate = s.count == 0 ? 0 : (s.normal / s.count * 100).round();
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0B8A7D), Color(0xFF2CA392), Color(0xFF70C5B3)],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x220B8A7D),
-            blurRadius: 28,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_today_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                DateFormat('yyyy-MM-dd').format(_date),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: _pickDate,
-                style: TextButton.styleFrom(foregroundColor: Colors.white),
-                child: const Text('切换日期'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            '把血糖波动拆成一条可读的时间线',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 25,
-              height: 1.12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _metric('次数', '${s.count}'),
-              _metric('均值', s.avg?.toStringAsFixed(1) ?? '--'),
-              _metric('最低', s.min?.toStringAsFixed(1) ?? '--'),
-              _metric('最高', s.max?.toStringAsFixed(1) ?? '--'),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _chip(
-                '目标 ${_targetMin.toStringAsFixed(1)}-${_targetMax.toStringAsFixed(1)}',
-              ),
-              _chip('达标率 $rate%'),
-              _chip('偏低 ${s.low}'),
-              _chip('偏高 ${s.high}'),
-            ],
-          ),
-        ],
-      ),
+  double get _targetMax {
+    final value = toDouble(_profile?['targetFbgMax']) ?? 7.8;
+    return value > 0 ? value : 7.8;
+  }
+
+  String _typeCode(dynamic value) {
+    final label = DisplayText.glucoseMeasure(value);
+    switch (label) {
+      case '空腹':
+        return 'FASTING';
+      case '餐后':
+        return 'POST_MEAL';
+      case '睡前':
+        return 'BEFORE_SLEEP';
+      case '随机':
+        return 'RANDOM';
+      default:
+        return '${value ?? ''}'.trim().toUpperCase().replaceAll('-', '_');
+    }
+  }
+
+  List<Map<String, dynamic>> get _rows {
+    if (_typeFilter == 'ALL') return _records;
+    return _records
+        .where((row) => _typeCode(row['measureType']) == _typeFilter)
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _chronologicalRows {
+    final rows = [..._rows];
+    rows.sort(
+      (a, b) => _toDate(a['measureTime']).compareTo(_toDate(b['measureTime'])),
     );
+    return rows;
   }
 
-  Widget _metric(String label, String value) => Expanded(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _chip(String t) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.16),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      t,
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-        fontSize: 12,
-      ),
-    ),
-  );
-
-  Widget _adviceCard() {
-    final s = _stats;
-    final tips = <String>[];
-    var title = '今日血糖总体平稳';
-    var color = const Color(0xFF0B8A7D);
-    if (_records.isNotEmpty) {
-      final latest = _toDouble(_records.first['valueMmolL']) ?? 0;
-      if (latest > _targetMax) {
-        title = '出现偏高血糖，请关注';
-        color = const Color(0xFFC53A2E);
-        tips.add('减少下一餐精制碳水，优先蔬菜和优质蛋白。');
-        tips.add('餐后步行 20-30 分钟帮助回落。');
-      } else if (latest < _targetMin) {
-        title = '出现偏低血糖，请及时处理';
-        color = const Color(0xFFE08A22);
-        tips.add('先补充 15g 快速碳水，15 分钟后复测。');
+  _GlucoseStats get _stats {
+    final values = _records
+        .map((e) => toDouble(e['valueMmolL']))
+        .whereType<double>()
+        .toList();
+    if (values.isEmpty) return const _GlucoseStats.empty();
+    var low = 0;
+    var normal = 0;
+    var high = 0;
+    for (final value in values) {
+      if (value < _targetMin) {
+        low++;
+      } else if (value > _targetMax) {
+        high++;
+      } else {
+        normal++;
       }
     }
-    if (s.high >= 2) tips.add('今日偏高次数较多，建议晚餐主食减量。');
-    if (s.low >= 2) tips.add('今日偏低次数较多，建议复核药量和进餐间隔。');
-    if (tips.isEmpty) tips.add('继续保持规律监测，重点关注空腹和餐后数据。');
-
-    return FrostPanel(
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SectionTitle(
-              title: '智能建议',
-              subtitle: '根据当天记录，快速给出下一步更适合的饮食和活动动作',
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(Icons.auto_awesome_rounded, color: color),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: color,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ...tips
-                .take(3)
-                .map(
-                  (t) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 6),
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(t, style: const TextStyle(height: 1.32)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-          ],
-        ),
-      ),
+    return _GlucoseStats(
+      count: values.length,
+      normal: normal,
+      low: low,
+      high: high,
+      average: values.reduce((a, b) => a + b) / values.length,
+      min: values.reduce(math.min),
+      max: values.reduce(math.max),
     );
   }
 
-  // 【Fix】趋势卡片：用 _switchingTrend 代替原来的 _trendLoading
-  Widget _trendCard() {
-    return FrostPanel(
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionTitle(
-              title: '血糖趋势',
-              subtitle: '观察近一周或近一月的整体波动方向',
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ChoiceChip(
-                    label: const Text('周'),
-                    selected: _range == 'WEEK',
-                    onSelected: (_) => _switchTrend('WEEK'),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('月'),
-                    selected: _range == 'MONTH',
-                    onSelected: (_) => _switchTrend('MONTH'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (_switchingTrend)
-              const SizedBox(
-                height: 260,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_trend.isEmpty)
-              const SizedBox(height: 160, child: Center(child: Text('暂无趋势数据')))
-            else ...[
-              // 【Fix】图表高度改为 260，给 Y 轴标签足够空间
-              SizedBox(height: 260, child: _lineChart()),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _legendDot(const Color(0xFF0B8A7D)),
-                  const SizedBox(width: 4),
-                  const Text(
-                    '血糖值',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
-                  ),
-                  const SizedBox(width: 16),
-                  _legendDash(const Color(0xFFE08A22)),
-                  const SizedBox(width: 4),
-                  const Text(
-                    '目标下限',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
-                  ),
-                  const SizedBox(width: 16),
-                  _legendDash(const Color(0xFFC53A2E)),
-                  const SizedBox(width: 4),
-                  const Text(
-                    '目标上限',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF5A7673)),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
+  String _typeLabel(dynamic raw) => DisplayText.glucoseMeasure(raw);
+
+  String _timeText(dynamic raw) {
+    final date = _toDate(raw);
+    if (date.millisecondsSinceEpoch == 0) return '--:--';
+    return DateFormat('HH:mm').format(date);
   }
 
-  Widget _lineChart() {
-    final spots = <FlSpot>[];
-    for (var i = 0; i < _trend.length; i++) {
-      final value = _toDouble(_trend[i]['value']);
-      if (value == null) continue;
-      spots.add(FlSpot(i.toDouble(), value));
+  Color _toneForValue(double? value) {
+    if (value == null) return const Color(0xFF5E7470);
+    if (value < _targetMin) return const Color(0xFFE08A22);
+    if (value > _targetMax) return const Color(0xFFC53A2E);
+    return const Color(0xFF0B8A7D);
+  }
+
+  String _statusForValue(double? value) {
+    if (value == null) return '等待记录';
+    if (value < _targetMin) return '偏低';
+    if (value > _targetMax) return '偏高';
+    return '达标';
+  }
+
+  String _smartAdvice() {
+    final stats = _stats;
+    if (stats.count == 0) {
+      return '今天还没有血糖记录。建议先补一条空腹或餐后记录，后续建议会更准确。';
     }
-    if (spots.length < 2) {
-      return const Center(child: Text('数据不足，至少需要 2 条趋势数据'));
+    if (stats.high >= math.max(stats.normal, stats.low) && stats.high > 0) {
+      return '今天偏高记录较多，下一餐建议控制主食分量，餐后安排 15-30 分钟轻度步行。';
     }
-
-    final ys = spots.map((e) => e.y).toList();
-    final minY = ys.reduce(min);
-    final maxY = ys.reduce(max);
-    final pad = max(0.8, (maxY - minY) * 0.2);
-    final chartMinY = minY - pad;
-    final chartMaxY = maxY + pad;
-
-    // 【Fix】动态计算 Y 轴间隔，确保标签不重叠
-    // 目标：Y 轴显示 4~5 个刻度，间隔对齐 0.5 的倍数
-    final yRange = chartMaxY - chartMinY;
-    var yInterval = yRange / 4;
-    // 向上取整到最近的 0.5 倍数
-    yInterval = ((yInterval * 2).ceil()) / 2.0;
-    if (yInterval < 0.5) yInterval = 0.5;
-
-    return LineChart(
-      LineChartData(
-        minX: 0,
-        maxX: (spots.length - 1).toDouble(),
-        minY: chartMinY,
-        maxY: chartMaxY,
-        extraLinesData: ExtraLinesData(
-          horizontalLines: [
-            HorizontalLine(
-              y: _targetMin,
-              color: const Color(0xFFE08A22),
-              strokeWidth: 1.2,
-              dashArray: [6, 4],
-              label: HorizontalLineLabel(
-                show: true,
-                alignment: Alignment.topRight,
-                padding: const EdgeInsets.only(right: 8, bottom: 4),
-                style: const TextStyle(
-                  color: Color(0xFFE08A22),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                labelResolver: (line) => '目标下限 ${line.y.toStringAsFixed(1)}',
-              ),
-            ),
-            HorizontalLine(
-              y: _targetMax,
-              color: const Color(0xFFC53A2E),
-              strokeWidth: 1.2,
-              dashArray: [6, 4],
-              label: HorizontalLineLabel(
-                show: true,
-                alignment: Alignment.topRight,
-                padding: const EdgeInsets.only(right: 8, bottom: 4),
-                style: const TextStyle(
-                  color: Color(0xFFC53A2E),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                labelResolver: (line) => '目标上限 ${line.y.toStringAsFixed(1)}',
-              ),
-            ),
-          ],
-        ),
-        borderData: FlBorderData(show: false),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: yInterval, // 与 Y 轴标签同步
-        ),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 52, // 【Fix】加大宽度，防止标签被截断
-              interval: yInterval,
-              getTitlesWidget: (v, meta) {
-                // 跳过边界值，避免与边框重叠
-                if ((v - meta.min).abs() < 0.001 ||
-                    (v - meta.max).abs() < 0.001) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: Text(
-                    v.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF5A7673),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 30,
-              // 【Fix】底部最多显示 5 个 X 轴标签
-              interval: _trend.length <= 5
-                  ? 1
-                  : ((_trend.length - 1) / 4).ceilToDouble(),
-              getTitlesWidget: (v, _) {
-                final i = v.round();
-                if (i < 0 || i >= _trend.length) return const SizedBox.shrink();
-                final raw = '${_trend[i]['time'] ?? ''}';
-                final label = raw.length > 5
-                    ? raw.substring(raw.length - 5)
-                    : raw;
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(label, style: const TextStyle(fontSize: 11)),
-                );
-              },
-            ),
-          ),
-        ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            barWidth: 3,
-            color: const Color(0xFF0B8A7D),
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF0B8A7D).withValues(alpha: 0.24),
-                  const Color(0xFF0B8A7D).withValues(alpha: 0.03),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _timelineCard() {
-    final rows = _rows;
-    if (rows.isEmpty) return _emptyCard();
-    final grouped = <String, List<Map<String, dynamic>>>{
-      '上午': [],
-      '中午': [],
-      '下午': [],
-      '晚间': [],
-    };
-    for (final r in rows) {
-      grouped[_bucket(_toDate(r['measureTime']))]!.add(r);
+    if (stats.low > 0) {
+      return '今天出现偏低记录，请留意是否漏餐或运动过量，外出时建议随身准备低血糖应急食物。';
     }
-
-    return FrostPanel(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(2, 2, 2, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionTitle(
-              title: '分时段时间轴',
-              subtitle: '把每一条记录放回具体时段和测量时间里查看',
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextButton(
-                    onPressed: _showAbnormalHistory,
-                    child: const Text('异常记录'),
-                  ),
-                  const SizedBox(width: 4),
-                  FilledButton.tonalIcon(
-                    onPressed: _addRecord,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('新增'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _labels.entries
-                    .map(
-                      (e) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(e.value),
-                          selected: _typeFilter == e.key,
-                          onSelected: (_) =>
-                              setState(() => _typeFilter = e.key),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...grouped.entries
-                .where((e) => e.value.isNotEmpty)
-                .map((g) => _timelineGroup(g.key, g.value)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _timelineGroup(String title, List<Map<String, dynamic>> list) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$title · ${list.length} 条',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF285E59),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...list.asMap().entries.map(
-            (e) => _timelineItem(e.value, e.key == list.length - 1),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _timelineItem(Map<String, dynamic> item, bool isLast) {
-    final v = _toDouble(item['valueMmolL']) ?? 0;
-    final color = _valueColor(v);
-    final type = _labels['${item['measureType']}'] ?? '${item['measureType']}';
-    final remark = '${item['remark'] ?? ''}'.trim();
-    final timeLabel = DateFormat('HH:mm').format(_toDate(item['measureTime']));
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 22,
-          child: Column(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              if (!isLast)
-                Container(width: 2, height: 56, color: const Color(0xFFD2E6E2)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.58),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFDCE8E5)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      '${v.toStringAsFixed(1)} mmol/L',
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _pill(_status(v), color),
-                    const Spacer(),
-                    Text(
-                      timeLabel,
-                      style: const TextStyle(color: Color(0xFF5A7673)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    _pill('$type · $timeLabel', const Color(0xFF0B8A7D)),
-                    const SizedBox(width: 6),
-                    TextButton(
-                      onPressed: () => _deleteRecord(item['id']),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 30),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      child: const Text('删除'),
-                    ),
-                  ],
-                ),
-                if (remark.isNotEmpty)
-                  Text(
-                    '备注：$remark',
-                    style: const TextStyle(color: Color(0xFF5A7673)),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _pill(String t, Color c) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-      color: c.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      t,
-      style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.w700),
-    ),
-  );
-
-  Widget _emptyCard() {
-    return FrostPanel(
-      child: SizedBox(
-        height: 250,
-        child: Stack(
-          children: [
-            Positioned(
-              top: 24,
-              left: 18,
-              child: Container(
-                width: 82,
-                height: 82,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFBDE9E2).withValues(alpha: 0.35),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 20,
-              right: 20,
-              child: Container(
-                width: 62,
-                height: 62,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFE4D0).withValues(alpha: 0.4),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFEAF8F5), Color(0xFFD6F0EB)],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          blurRadius: 24,
-                          offset: Offset(0, 8),
-                          color: Color(0x1F0B8A7D),
-                        ),
-                      ],
-                    ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.monitor_heart_rounded,
-                          size: 40,
-                          color: Color(0xFF0B8A7D),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '0',
-                          style: TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0B8A7D),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    '今天还没有血糖记录',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '先记录一条数据，时间轴和建议会自动生成',
-                    style: TextStyle(color: Color(0xFF5A7673)),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _addRecord,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('记录第一条'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return '今天血糖整体平稳。继续保持规律进餐、稳定碳水和适度活动。';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFE8F3F0),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
         title: const Text('每日血糖'),
         actions: [
           IconButton(
@@ -1160,243 +453,737 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 78),
-        child: GlassActionButton(
-          onTap: _addRecord,
-          icon: Icons.add_rounded,
-          label: '记录血糖',
+        padding: const EdgeInsets.only(bottom: 82),
+        child: FloatingActionButton.extended(
+          heroTag: 'glucose_add_record_fab_clean_v1',
+          onPressed: () => _addRecord(),
+          backgroundColor: const Color(0xFF0B8A7D),
+          foregroundColor: Colors.white,
+          elevation: 8,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text(
+            '记录血糖',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
         ),
       ),
-      // 【Fix】用 DecoratedBox 做纯静态背景，不参与滚动层级
-      body: DecoratedBox(
+      body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFD9F1EE), Color(0xFFF4F8F7), Color(0xFFFFEADB)],
+            colors: [Color(0xFFDDF1EC), Color(0xFFF8FBF8), Color(0xFFFFF0E2)],
           ),
         ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            // 【Fix】RefreshIndicator 直接包裹 ListView，
-            // physics 用 AlwaysScrollableScrollPhysics 确保空内容时也能下拉
-            : RefreshIndicator(
-                onRefresh: _loadAll,
-                child: ListView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
-                  children: [
-                    if (_error != null) ...[
-                      FrostPanel(
-                        tint: const Color(0xFFFFF4F1),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.cloud_off_rounded,
-                              color: Color(0xFFC53A2E),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '数据加载失败',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFFC53A2E),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    _error!,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8F3B32),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  FilledButton.tonal(
-                                    onPressed: _loadAll,
-                                    child: const Text('重新连接'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    _summaryCard(),
-                    const SizedBox(height: 12),
-                    FrostPanel(
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _quickBtn(
-                            '空腹',
-                            Icons.wb_sunny_outlined,
-                            () => _addRecord('FASTING'),
-                          ),
-                          _quickBtn(
-                            '餐后',
-                            Icons.restaurant_outlined,
-                            () => _addRecord('POST_MEAL'),
-                          ),
-                          _quickBtn(
-                            '睡前',
-                            Icons.nightlight_outlined,
-                            () => _addRecord('BEFORE_SLEEP'),
-                          ),
-                          _quickBtn(
-                            '随机',
-                            Icons.schedule_rounded,
-                            () => _addRecord('RANDOM'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _adviceCard(),
-                    if (_records.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      TirCard(
-                        values: _records
-                            .map((r) => _toDouble(r['valueMmolL']) ?? 0.0)
-                            .where((v) => v > 0)
-                            .toList(),
-                        targetMin: _targetMin,
-                        targetMax: _targetMax,
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    _trendCard(),
-                    if (_stats.avg != null) ...[
-                      const SizedBox(height: 12),
-                      HbA1cBanner(avgGlucose: _stats.avg!),
-                    ],
-                    const SizedBox(height: 12),
-                    _timelineCard(),
-                  ],
-                ),
-              ),
+        child: SafeArea(
+          bottom: false,
+          child: _loading ? _loadingState() : _content(),
+        ),
       ),
     );
   }
 
-  Widget _quickBtn(String t, IconData i, VoidCallback onTap) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(12),
-    child: Ink(
-      width: 160,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  Widget _loadingState() {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(strokeWidth: 3),
+          SizedBox(height: 16),
+          Text('正在同步血糖数据', style: TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  Widget _content() {
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 118),
+            sliver: SliverList.list(
+              children: [
+                if (_error != null) ...[
+                  _errorCard(),
+                  const SizedBox(height: 12),
+                ],
+                _heroCard(),
+                const SizedBox(height: 12),
+                _filterCard(),
+                const SizedBox(height: 12),
+                _chartCard(),
+                const SizedBox(height: 12),
+                _timeMapCard(),
+                const SizedBox(height: 12),
+                _adviceCard(),
+                const SizedBox(height: 12),
+                _recordsCard(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorCard() {
+    return _GlassCard(
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: Color(0xFFC53A2E)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFC53A2E)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroCard() {
+    final latest = _records.isEmpty ? null : _records.first;
+    final latestValue = toDouble(latest?['valueMmolL']);
+    final tone = _toneForValue(latestValue);
+    final stats = _stats;
+    return Container(
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8F6F3),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0A6D64), Color(0xFF0B8A7D), Color(0xFF7DCEBE)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B8A7D).withValues(alpha: 0.24),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            DateFormat('yyyy年MM月dd日 EEEE', 'zh_CN').format(_date),
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '今日血糖状态',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _smartAdvice(),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${stats.tir.round()}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Text(
+                        '达标率',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroMetric(
+                  label: '最新',
+                  value: latestValue == null
+                      ? '--'
+                      : latestValue.toStringAsFixed(1),
+                  unit: 'mmol/L',
+                  accent: tone,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeroMetric(
+                  label: '均值',
+                  value: stats.average == null
+                      ? '--'
+                      : stats.average!.toStringAsFixed(1),
+                  unit: 'mmol/L',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeroMetric(
+                  label: '记录',
+                  value: '${stats.count}',
+                  unit: '次',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterCard() {
+    return _GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle(title: '测量时段', subtitle: '切换后图表和列表会同步过滤'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _labels.entries.map((entry) {
+              final selected = _typeFilter == entry.key;
+              return ChoiceChip(
+                label: Text(entry.value),
+                selected: selected,
+                onSelected: (_) => setState(() => _typeFilter = entry.key),
+                selectedColor: const Color(0xFF0B8A7D),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF385450),
+                  fontWeight: FontWeight.w800,
+                ),
+                side: BorderSide(
+                  color: selected
+                      ? Colors.transparent
+                      : const Color(0xFFD8E8E4),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chartCard() {
+    final rows = _chronologicalRows;
+    return _GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle(
+            title: '血糖节律图',
+            subtitle: '新的图形表不接管手势，整页都能顺畅上下滑动',
+          ),
+          const SizedBox(height: 14),
+          Container(
+            height: 226,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FCFA),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white),
+            ),
+            child: rows.isEmpty
+                ? const Center(
+                    child: Text(
+                      '暂无记录，添加一条后这里会生成节律图',
+                      style: TextStyle(color: Color(0xFF6B7D79)),
+                    ),
+                  )
+                : CustomPaint(
+                    painter: GlucoseRhythmPainter(
+                      records: rows,
+                      targetMin: _targetMin,
+                      targetMax: _targetMax,
+                      valueOf: (row) => toDouble(row['valueMmolL']),
+                      timeOf: (row) => _timeText(row['measureTime']),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timeMapCard() {
+    final byType = <String, Map<String, dynamic>?>{};
+    for (final key in ['FASTING', 'POST_MEAL', 'BEFORE_SLEEP', 'RANDOM']) {
+      byType[key] = _records.cast<Map<String, dynamic>?>().firstWhere(
+        (row) => row != null && _typeCode(row['measureType']) == key,
+        orElse: () => null,
+      );
+    }
+    return _GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle(title: '分时段地图', subtitle: '空腹、餐后、睡前三个关键点一眼确认'),
+          const SizedBox(height: 12),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.65,
+            children: ['FASTING', 'POST_MEAL', 'BEFORE_SLEEP', 'RANDOM'].map((
+              type,
+            ) {
+              final row = byType[type];
+              final value = toDouble(row?['valueMmolL']);
+              final tone = _toneForValue(value);
+              return InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () => _addRecord(type),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: tone.withValues(alpha: 0.16)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _typeLabel(type),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF173B37),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.add_circle_outline_rounded,
+                            size: 18,
+                            color: tone,
+                          ),
+                        ],
+                      ),
+                      Text(
+                        value == null ? '--' : value.toStringAsFixed(1),
+                        style: TextStyle(
+                          color: tone,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        row == null
+                            ? '点击补记'
+                            : '${_statusForValue(value)} · ${_timeText(row['measureTime'])}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF607672),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _adviceCard() {
+    final stats = _stats;
+    return _GlassCard(
+      tint: const Color(0xFFFFF8EF),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFFFE8CF),
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFF9A6338),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '智能建议',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF173B37),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _smartAdvice(),
+                  style: const TextStyle(
+                    height: 1.42,
+                    color: Color(0xFF526A66),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _SoftPill('偏高 ${stats.high}'),
+                    _SoftPill('偏低 ${stats.low}'),
+                    _SoftPill('达标 ${stats.normal}'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordsCard() {
+    final rows = _rows;
+    return _GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: _SectionTitle(title: '记录明细', subtitle: '按测量时间倒序展示'),
+              ),
+              TextButton.icon(
+                onPressed: () => _addRecord(),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('新增'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (rows.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FCFA),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Column(
+                children: [
+                  Icon(
+                    Icons.water_drop_outlined,
+                    size: 42,
+                    color: Color(0xFF8CA19D),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    '当前筛选下暂无记录',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF385450),
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '点击右下角按钮添加一条血糖记录',
+                    style: TextStyle(color: Color(0xFF6B7D79)),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...rows.map(_recordTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordTile(Map<String, dynamic> row) {
+    final value = toDouble(row['valueMmolL']);
+    final tone = _toneForValue(value);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FCFA),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: tone.withValues(alpha: 0.14)),
       ),
       child: Row(
         children: [
-          Icon(i, color: const Color(0xFF0B8A7D)),
-          const SizedBox(width: 8),
-          Text(t, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
-      ),
-    ),
-  );
-
-  Widget _legendDot(Color color) => Container(
-    width: 10,
-    height: 10,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-  );
-
-  Widget _legendDash(Color color) => Container(
-    width: 18,
-    height: 2,
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(1),
-    ),
-  );
-
-  Future<void> _showAbnormalHistory() async {
-    try {
-      final res = await ApiService.get(
-        '/blood-glucose/abnormal-events',
-        query: {'page': '0', 'size': '50'},
-      );
-      final list = ((res['content'] ?? res['data']) as List? ?? const [])
-          .map(
-            (e) => e is Map<String, dynamic>
-                ? e
-                : (e is Map
-                      ? e.map((k, v) => MapEntry('$k', v))
-                      : <String, dynamic>{}),
-          )
-          .toList();
-
-      if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) {
-          if (list.isEmpty) {
-            return const SizedBox(
-              height: 200,
-              child: Center(child: Text('近期无异常血糖记录')),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            itemCount: list.length,
-            itemBuilder: (_, i) {
-              final item = list[i];
-              final isHigh = item['type'] == 'HIGH';
-              final color = isHigh
-                  ? const Color(0xFFC53A2E)
-                  : const Color(0xFFE08A22);
-              final label = isHigh ? '偏高' : '偏低';
-              final timeStr = item['createdAt'] is String
-                  ? DateFormat(
-                      'MM-dd HH:mm',
-                    ).format(DateTime.parse(item['createdAt']).toLocal())
-                  : '--';
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: color.withValues(alpha: 0.12),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tone.withValues(alpha: 0.12),
+            ),
+            child: Icon(Icons.monitor_heart_rounded, color: tone),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${value == null ? '--' : value.toStringAsFixed(1)} mmol/L',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    color: tone,
                   ),
                 ),
-                title: Text('血糖$label事件'),
-                subtitle: Text(timeStr),
-                trailing: item['handled'] == true
-                    ? const Icon(
-                        Icons.check_circle_outline_rounded,
-                        color: Color(0xFF0B8A7D),
-                      )
-                    : const Icon(
-                        Icons.pending_outlined,
-                        color: Color(0xFF9AA8A6),
-                      ),
-              );
-            },
-          );
-        },
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
-    }
+                const SizedBox(height: 3),
+                Text(
+                  '${_typeLabel(row['measureType'])} · ${_timeText(row['measureTime'])} · ${_statusForValue(value)}',
+                  style: const TextStyle(
+                    color: Color(0xFF526A66),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if ('${row['remark'] ?? ''}'.trim().isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    '${row['remark']}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFF7A8D89)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _deleteRecord(row['id']),
+            icon: const Icon(Icons.delete_outline_rounded),
+            color: const Color(0xFF9AA8A6),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlucoseStats {
+  const _GlucoseStats({
+    required this.count,
+    required this.normal,
+    required this.low,
+    required this.high,
+    required this.average,
+    required this.min,
+    required this.max,
+  });
+
+  const _GlucoseStats.empty()
+    : count = 0,
+      normal = 0,
+      low = 0,
+      high = 0,
+      average = null,
+      min = null,
+      max = null;
+
+  final int count;
+  final int normal;
+  final int low;
+  final int high;
+  final double? average;
+  final double? min;
+  final double? max;
+
+  double get tir => count == 0 ? 0 : normal * 100 / count;
+}
+
+class _GlassCard extends StatelessWidget {
+  const _GlassCard({required this.child, this.tint});
+
+  final Widget child;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: (tint ?? Colors.white).withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.88)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B3F38).withValues(alpha: 0.07),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF173B37),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF6B7D79),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    required this.unit,
+    this.accent,
+  });
+
+  final String label;
+  final String value;
+  final String unit;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            unit,
+            style: const TextStyle(color: Colors.white60, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoftPill extends StatelessWidget {
+  const _SoftPill(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF526A66),
+        ),
+      ),
+    );
   }
 }

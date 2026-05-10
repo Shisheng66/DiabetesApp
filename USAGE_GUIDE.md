@@ -58,7 +58,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/diabetes_health?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
     username: root
-    password: 1234
+    password: ${DB_PASSWORD}
 
 server:
   port: 8080
@@ -289,3 +289,4 @@ adb reverse tcp:8080 tcp:8080
 - 前后端分离明确
 - 尽量减少无用文件
 - 方便其他人直接 clone 后运行
+

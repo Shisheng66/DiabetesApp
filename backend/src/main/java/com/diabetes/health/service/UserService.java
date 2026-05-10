@@ -30,6 +30,21 @@ public class UserService {
         UserHealthProfile profile = healthProfileRepository.findByUserId(account.getId()).orElse(null);
 
         AuthDto.UserInfo info = new AuthDto.UserInfo();
+        info.setPhone(account.getPhone());
+        if (profile != null) {
+            info.setNickname(profile.getNickname());
+            info.setAvatarUrl(profile.getAvatarUrl());
+            info.setHealthProfile(UserDto.HealthProfileResponse.from(profile));
+        }
+        return info;
+    }
+
+    public AuthDto.AdminUserInfo getAdminMe(CurrentUser currentUser) {
+        UserAccount account = userAccountRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+        UserHealthProfile profile = healthProfileRepository.findByUserId(account.getId()).orElse(null);
+
+        AuthDto.AdminUserInfo info = new AuthDto.AdminUserInfo();
         info.setId(account.getId());
         info.setPhone(account.getPhone());
         info.setRole(account.getRole().name());
@@ -63,7 +78,6 @@ public class UserService {
                 .map(UserDto.HealthProfileResponse::from)
                 .orElseGet(() -> {
                     UserDto.HealthProfileResponse response = new UserDto.HealthProfileResponse();
-                    response.setUserId(currentUser.getId());
                     return response;
                 });
     }
@@ -81,7 +95,8 @@ public class UserService {
         if (req.getGender() != null) {
             try {
                 profile.setGender(UserHealthProfile.Gender.valueOf(req.getGender()));
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "性别选择不正确");
             }
         }
         if (req.getBirthDate() != null) profile.setBirthDate(req.getBirthDate());
@@ -89,8 +104,9 @@ public class UserService {
         if (req.getWeightKg() != null) profile.setWeightKg(req.getWeightKg());
         if (req.getDiabetesType() != null) {
             try {
-                profile.setDiabetesType(UserHealthProfile.DiabetesType.valueOf(req.getDiabetesType()));
-            } catch (IllegalArgumentException ignored) {
+                profile.setDiabetesType(parseDiabetesType(req.getDiabetesType()));
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "糖尿病类型选择不正确");
             }
         }
         if (req.getDiagnosisDate() != null) profile.setDiagnosisDate(req.getDiagnosisDate());
@@ -114,5 +130,16 @@ public class UserService {
         account.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
         account.setUpdatedAt(Instant.now());
         userAccountRepository.save(account);
+    }
+
+    private UserHealthProfile.DiabetesType parseDiabetesType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        return switch (normalized) {
+            case "TYPE_1", "一型" -> UserHealthProfile.DiabetesType.TYPE1;
+            case "TYPE_2", "二型" -> UserHealthProfile.DiabetesType.TYPE2;
+            case "TYPE_1_5", "LADA", "1.5型", "其他" -> UserHealthProfile.DiabetesType.OTHER;
+            case "妊娠期" -> UserHealthProfile.DiabetesType.GESTATIONAL;
+            default -> UserHealthProfile.DiabetesType.valueOf(normalized);
+        };
     }
 }

@@ -11,6 +11,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../services/api_service.dart';
+import '../utils/json_helpers.dart';
+import '../widgets/error_pane.dart';
 import '../widgets/premium_health_ui.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -76,7 +78,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final rows = (trend['points'] as List?) ?? const [];
       setState(() {
-        _points = rows.map(_asMap).toList();
+        _points = rows.map(asMap).toList();
         _dietRec = rec;
         _dietAnalysis = analysis;
         _dietRecError = recErr;
@@ -231,11 +233,11 @@ class _ReportScreenState extends State<ReportScreen> {
 
     final rows = (res['points'] as List?) ?? const [];
     return rows
-        .map(_asMap)
+        .map(asMap)
         .map(
           (e) => _ReportPoint(
             timeLabel: (e['time'] ?? '').toString(),
-            value: _toDouble(e['value']) ?? 0,
+            value: toDouble(e['value']) ?? 0,
           ),
         )
         .toList();
@@ -298,7 +300,7 @@ class _ReportScreenState extends State<ReportScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? _ErrorPane(message: _error!, onRetry: _load)
+            ? ErrorPane(message: _error!, onRetry: _load)
             : RefreshIndicator(
                 onRefresh: _load,
                 child: RepaintBoundary(
@@ -419,7 +421,7 @@ class _ReportScreenState extends State<ReportScreen> {
     final spots = <FlSpot>[];
     for (var i = 0; i < _points.length; i++) {
       final item = _points[i];
-      final value = _toDouble(item['value']) ?? 0;
+      final value = toDouble(item['value']) ?? 0;
       spots.add(FlSpot(i.toDouble(), value));
     }
 
@@ -515,7 +517,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _summaryRow() {
     final values = _points
-        .map((e) => _toDouble(e['value']))
+        .map((e) => toDouble(e['value']))
         .whereType<double>()
         .toList();
     final avg = values.isEmpty
@@ -590,7 +592,7 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
               const SizedBox(height: 8),
               ...foods.map((raw) {
-                final f = _asMap(raw);
+                final f = asMap(raw);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
@@ -608,7 +610,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _nutritionReportCard() {
     final analysis = _dietAnalysis!;
-    final score = (_toDouble(analysis['score']) ?? 0).round();
+    final score = (toDouble(analysis['score']) ?? 0).round();
     final grade = '${analysis['grade'] ?? '待评估'}';
     final headline = '${analysis['headline'] ?? '营养管家已生成今日建议'}';
     final summary = '${analysis['summary'] ?? ''}';
@@ -779,18 +781,6 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) {
-      return value.map((k, v) => MapEntry('$k', v));
-    }
-    return const <String, dynamic>{};
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value');
-  }
 }
 
 class _ReportPoint {
@@ -812,31 +802,4 @@ class _ReportStats {
   final double avg;
   final double min;
   final double max;
-}
-
-class _ErrorPane extends StatelessWidget {
-  const _ErrorPane({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            size: 42,
-            color: Color(0xFFC53A2E),
-          ),
-          const SizedBox(height: 10),
-          Text(message, style: const TextStyle(color: Color(0xFFC53A2E))),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('重试')),
-        ],
-      ),
-    );
-  }
 }

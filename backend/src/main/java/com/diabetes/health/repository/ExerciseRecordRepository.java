@@ -14,4 +14,6 @@ public interface ExerciseRecordRepository extends JpaRepository<ExerciseRecord, 
     List<ExerciseRecord> findByUserIdAndDeletedFalseOrderByStartTimeDesc(Long userId, org.springframework.data.domain.Pageable pageable);
 
     List<ExerciseRecord> findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(Long userId, Instant start, Instant end);
+
+    List<ExerciseRecord> findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(Long userId, Instant start, Instant end, org.springframework.data.domain.Pageable pageable);
 }

@@ -1,7 +1,12 @@
 package com.diabetes.health.dto;
 
 import com.diabetes.health.entity.ExerciseType;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -20,16 +25,22 @@ public class ExerciseDto {
         private Instant startTime;
 
         private Instant endTime;
+        @Min(value = 1, message = "运动时长必须大于0分钟")
+        @Max(value = 1440, message = "运动时长不能超过1440分钟")
         private Integer durationMin;
+        @DecimalMin(value = "0.0", message = "距离不能小于0")
+        @DecimalMax(value = "1000", message = "距离不能超过1000km")
         private BigDecimal distanceKm;
+        @DecimalMin(value = "0.0", message = "消耗热量不能小于0")
+        @DecimalMax(value = "10000", message = "消耗热量不能超过10000kcal")
         private BigDecimal calorieKcal;
+        @Size(max = 200, message = "备注不能超过200字")
         private String remark;
     }
 
     @Data
     public static class TypeResponse {
         private Long id;
-        private String code;
         private String name;
         private BigDecimal metValue;
 
@@ -39,7 +50,6 @@ public class ExerciseDto {
             }
             TypeResponse response = new TypeResponse();
             response.setId(type.getId());
-            response.setCode(type.getCode());
             response.setName(type.getName());
             response.setMetValue(type.getMetValue());
             return response;
@@ -49,7 +59,6 @@ public class ExerciseDto {
     @Data
     public static class RecordResponse {
         private Long id;
-        private Long userId;
         private Long exerciseTypeId;
         private String exerciseTypeName;
         private Instant startTime;

@@ -9,7 +9,7 @@ import java.time.Instant;
  * 血糖异常事件表
  */
 @Entity
-@Table(name = "glucose_abnormal_event")
+@Table(name = "glucose_abnormal_event", indexes = @Index(name = "idx_gae_user_created", columnList = "user_id,created_at"))
 @Getter
 @Setter
 @NoArgsConstructor

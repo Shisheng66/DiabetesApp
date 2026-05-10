@@ -9,3 +9,7 @@
 # IDE
 .idea/
 .vscode/
+
+# Local helper scripts generated during debugging
+run_backend_detached.bat
+backend_run.*.log

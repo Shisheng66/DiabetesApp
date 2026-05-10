@@ -15,5 +15,5 @@ public class AuthVerificationProperties {
 
     private long smsCooldownSeconds = 60;
 
-    private boolean exposeDebugSmsCode = true;
+    private boolean exposeDebugSmsCode = false;
 }

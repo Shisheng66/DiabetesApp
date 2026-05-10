@@ -12,6 +12,8 @@ import com.diabetes.health.repository.CommunityPostRepository;
 import com.diabetes.health.repository.UserAccountRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
+import com.diabetes.health.util.DisplayLabel;
+import com.diabetes.health.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.owasp.html.PolicyFactory;
 import org.owasp.html.Sanitizers;
@@ -51,8 +53,8 @@ public class CommunityService {
     }
 
     public CommunityDto.PageResult<CommunityDto.PostResponse> listPosts(CurrentUser user, int page, int size) {
-        int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 50);
+        int safePage = PaginationUtils.safePage(page);
+        int safeSize = PaginationUtils.safeSize(size, 50);
         Page<CommunityPost> postPage = communityPostRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(safePage, safeSize));
 
         Map<Long, AuthorSummary> authors = loadAuthors(postPage.getContent().stream().map(CommunityPost::getUserId).toList());
@@ -77,8 +79,8 @@ public class CommunityService {
     }
 
     public CommunityDto.PageResult<CommunityDto.PostResponse> listHotPosts(CurrentUser user, int page, int size) {
-        int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 50);
+        int safePage = PaginationUtils.safePage(page);
+        int safeSize = PaginationUtils.safeSize(size, 50);
         Page<CommunityPost> postPage = communityPostRepository
                 .findAllByOrderByLikeCountDescCommentCountDescFavoriteCountDescCreatedAtDesc(
                         PageRequest.of(safePage, safeSize)
@@ -144,8 +146,8 @@ public class CommunityService {
         if (!communityPostRepository.existsById(postId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "帖子不存在");
         }
-        int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safePage = PaginationUtils.safePage(page);
+        int safeSize = PaginationUtils.safeSize(size, 100);
 
         Page<CommunityComment> commentPage = communityCommentRepository.findByPostIdOrderByCreatedAtAsc(postId, PageRequest.of(safePage, safeSize));
 
@@ -164,7 +166,7 @@ public class CommunityService {
 
     @Transactional
     public CommunityDto.PostResponse toggleLike(CurrentUser user, Long postId) {
-        requirePost(postId);
+        lockPost(postId);
         CommunityPostInteraction interaction = communityPostInteractionRepository.findByPostIdAndUserId(postId, user.getId())
                 .orElseGet(() -> CommunityPostInteraction.builder()
                         .postId(postId)
@@ -180,7 +182,7 @@ public class CommunityService {
 
     @Transactional
     public CommunityDto.PostResponse toggleFavorite(CurrentUser user, Long postId) {
-        requirePost(postId);
+        lockPost(postId);
         CommunityPostInteraction interaction = communityPostInteractionRepository.findByPostIdAndUserId(postId, user.getId())
                 .orElseGet(() -> CommunityPostInteraction.builder()
                         .postId(postId)
@@ -215,8 +217,8 @@ public class CommunityService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录后再查看互动记录");
         }
 
-        int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 50);
+        int safePage = PaginationUtils.safePage(page);
+        int safeSize = PaginationUtils.safeSize(size, 50);
         Page<CommunityPostInteraction> interactionPage = liked
                 ? communityPostInteractionRepository.findByUserIdAndLikedTrueOrderByUpdatedAtDesc(
                         user.getId(),
@@ -261,6 +263,11 @@ public class CommunityService {
 
     private CommunityPost requirePost(Long postId) {
         return communityPostRepository.findById(postId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "帖子不存在"));
+    }
+
+    private CommunityPost lockPost(Long postId) {
+        return communityPostRepository.findByIdForUpdate(postId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "帖子不存在"));
     }
 
@@ -357,9 +364,8 @@ public class CommunityService {
     private CommunityDto.PostResponse toPostResponse(CommunityPost post, AuthorSummary author, InteractionState interaction) {
         CommunityDto.PostResponse response = new CommunityDto.PostResponse();
         response.setId(post.getId());
-        response.setUserId(post.getUserId());
         response.setAuthorName(author == null ? "病友" : author.name());
-        response.setAuthorRole(author == null ? "PATIENT" : author.role());
+        response.setAuthorRole(roleLabel(author == null ? "PATIENT" : author.role()));
         response.setAuthorAvatarUrl(author == null ? null : author.avatarUrl());
         response.setContent(post.getContent());
         response.setCommentCount(Objects.requireNonNullElse(post.getCommentCount(), 0));
@@ -375,9 +381,8 @@ public class CommunityService {
         CommunityDto.CommentResponse response = new CommunityDto.CommentResponse();
         response.setId(comment.getId());
         response.setPostId(comment.getPostId());
-        response.setUserId(comment.getUserId());
         response.setAuthorName(author == null ? "病友" : author.name());
-        response.setAuthorRole(author == null ? "PATIENT" : author.role());
+        response.setAuthorRole(roleLabel(author == null ? "PATIENT" : author.role()));
         response.setAuthorAvatarUrl(author == null ? null : author.avatarUrl());
         response.setContent(comment.getContent());
         response.setCreatedAt(comment.getCreatedAt());
@@ -385,6 +390,14 @@ public class CommunityService {
     }
 
     private record AuthorSummary(String name, String role, String avatarUrl) {}
+
+    private String roleLabel(String rawRole) {
+        try {
+            return DisplayLabel.role(UserAccount.Role.valueOf(rawRole));
+        } catch (Exception ignored) {
+            return "病友";
+        }
+    }
 
     private record InteractionState(boolean liked, boolean favorited) {
         private static InteractionState none() {

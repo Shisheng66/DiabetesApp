@@ -1,0 +1,46 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+
+  production-config-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require HTTPS API base URL secret
+        run: |
+          if [ -z "${{ secrets.API_BASE_URL }}" ]; then
+            echo "API_BASE_URL repository secret is required for production builds."
+            exit 1
+          fi
+          case "${{ secrets.API_BASE_URL }}" in
+            https://*) exit 0 ;;
+            *) echo "API_BASE_URL must use https://"; exit 1 ;;
+          esac

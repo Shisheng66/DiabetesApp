@@ -9,7 +9,7 @@ import java.time.Instant;
  * 提醒触发记录表
  */
 @Entity
-@Table(name = "health_reminder_log")
+@Table(name = "health_reminder_log", indexes = @Index(name = "idx_hrl_reminder", columnList = "reminder_id"))
 @Getter
 @Setter
 @NoArgsConstructor

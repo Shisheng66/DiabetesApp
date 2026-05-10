@@ -3,6 +3,7 @@ package com.diabetes.health.controller;
 import com.diabetes.health.dto.CommunityDto;
 import com.diabetes.health.security.CurrentUser;
 import com.diabetes.health.service.CommunityService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +18,7 @@ public class CommunityController {
     @PostMapping("/posts")
     public CommunityDto.PostResponse createPost(
             @AuthenticationPrincipal CurrentUser user,
-            @RequestBody CommunityDto.CreatePostRequest request
+            @Valid @RequestBody CommunityDto.CreatePostRequest request
     ) {
         return communityService.createPost(user, request);
     }
@@ -70,7 +71,7 @@ public class CommunityController {
     public CommunityDto.CommentResponse createComment(
             @AuthenticationPrincipal CurrentUser user,
             @PathVariable Long postId,
-            @RequestBody CommunityDto.CreateCommentRequest request
+            @Valid @RequestBody CommunityDto.CreateCommentRequest request
     ) {
         return communityService.createComment(user, postId, request);
     }

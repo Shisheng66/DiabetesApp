@@ -10,6 +10,9 @@ import com.diabetes.health.repository.DietRecordRepository;
 import com.diabetes.health.repository.FoodNutritionRepository;
 import com.diabetes.health.repository.UserHealthProfileRepository;
 import com.diabetes.health.security.CurrentUser;
+import com.diabetes.health.util.DisplayLabel;
+import com.diabetes.health.util.MathUtil;
+import com.diabetes.health.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
@@ -109,10 +112,10 @@ public class DietService {
         List<DietRecord> list = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date);
         Map<Long, FoodNutrition> foods = loadFoods(list.stream().map(DietRecord::getFoodId).toList());
 
-        BigDecimal totalCal = sum(list.stream().map(DietRecord::getCalorieKcal).toList());
-        BigDecimal totalCarb = sum(list.stream().map(DietRecord::getCarbG).toList());
-        BigDecimal totalProtein = sum(list.stream().map(DietRecord::getProteinG).toList());
-        BigDecimal totalFat = sum(list.stream().map(DietRecord::getFatG).toList());
+        BigDecimal totalCal = MathUtil.sum(list.stream().map(DietRecord::getCalorieKcal).toList());
+        BigDecimal totalCarb = MathUtil.sum(list.stream().map(DietRecord::getCarbG).toList());
+        BigDecimal totalProtein = MathUtil.sum(list.stream().map(DietRecord::getProteinG).toList());
+        BigDecimal totalFat = MathUtil.sum(list.stream().map(DietRecord::getFatG).toList());
 
         DietDto.DailySummaryResponse response = new DietDto.DailySummaryResponse();
         response.setDate(date);
@@ -131,10 +134,10 @@ public class DietService {
         List<DietRecord> records = dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date);
         Map<Long, FoodNutrition> foods = loadFoods(records.stream().map(DietRecord::getFoodId).toList());
 
-        BigDecimal totalCalorie = sum(records.stream().map(DietRecord::getCalorieKcal).toList());
-        BigDecimal totalCarb = sum(records.stream().map(DietRecord::getCarbG).toList());
-        BigDecimal totalProtein = sum(records.stream().map(DietRecord::getProteinG).toList());
-        BigDecimal totalFat = sum(records.stream().map(DietRecord::getFatG).toList());
+        BigDecimal totalCalorie = MathUtil.sum(records.stream().map(DietRecord::getCalorieKcal).toList());
+        BigDecimal totalCarb = MathUtil.sum(records.stream().map(DietRecord::getCarbG).toList());
+        BigDecimal totalProtein = MathUtil.sum(records.stream().map(DietRecord::getProteinG).toList());
+        BigDecimal totalFat = MathUtil.sum(records.stream().map(DietRecord::getFatG).toList());
         BigDecimal macroCalories = totalCarb.multiply(FOUR)
                 .add(totalProtein.multiply(FOUR))
                 .add(totalFat.multiply(NINE));
@@ -273,8 +276,8 @@ public class DietService {
 
     public DietDto.PageResult<DietDto.FoodItemResponse> searchFoods(CurrentUser user, String keyword, int page, int size) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        int safeSize = Math.max(size, 1);
-        int safePage = Math.max(page, 0);
+        int safeSize = PaginationUtils.safeSize(size, 50);
+        int safePage = PaginationUtils.safePage(page);
         Page<FoodNutrition> foodPage = foodNutritionRepository.searchAccessibleFoods(
                 user.getId(),
                 normalizedKeyword,
@@ -316,7 +319,7 @@ public class DietService {
                 .map(plan -> DietDto.MealPlanItemResponse.from(plan, foods.get(plan.getFoodId())))
                 .toList();
 
-        BigDecimal totalCalorie = sum(items.stream().map(DietDto.MealPlanItemResponse::getCalorieKcal).toList());
+        BigDecimal totalCalorie = MathUtil.sum(items.stream().map(DietDto.MealPlanItemResponse::getCalorieKcal).toList());
 
         DietDto.DailyMealPlanResponse response = new DietDto.DailyMealPlanResponse();
         response.setDate(date);
@@ -412,7 +415,7 @@ public class DietService {
         item.setCalorieSharePct(share);
         item.setTargetMinPct(targetMin);
         item.setTargetMaxPct(targetMax);
-        item.setStatus(share.compareTo(targetMin) < 0 ? "LOW" : (share.compareTo(targetMax) > 0 ? "HIGH" : "OK"));
+        item.setStatus(share.compareTo(targetMin) < 0 ? "偏低" : (share.compareTo(targetMax) > 0 ? "偏高" : "合适"));
         return item;
     }
 
@@ -422,20 +425,20 @@ public class DietService {
             List<DietRecord> mealRecords = records.stream()
                     .filter(record -> record.getMealType() == mealType)
                     .toList();
-            BigDecimal calorie = sum(mealRecords.stream().map(DietRecord::getCalorieKcal).toList());
-            BigDecimal carb = sum(mealRecords.stream().map(DietRecord::getCarbG).toList());
-            BigDecimal protein = sum(mealRecords.stream().map(DietRecord::getProteinG).toList());
-            BigDecimal fat = sum(mealRecords.stream().map(DietRecord::getFatG).toList());
+            BigDecimal calorie = MathUtil.sum(mealRecords.stream().map(DietRecord::getCalorieKcal).toList());
+            BigDecimal carb = MathUtil.sum(mealRecords.stream().map(DietRecord::getCarbG).toList());
+            BigDecimal protein = MathUtil.sum(mealRecords.stream().map(DietRecord::getProteinG).toList());
+            BigDecimal fat = MathUtil.sum(mealRecords.stream().map(DietRecord::getFatG).toList());
 
             DietDto.MealBalanceItem item = new DietDto.MealBalanceItem();
-            item.setMealType(mealType.name());
+            item.setMealType(MEAL_LABELS.getOrDefault(mealType, mealType.name()));
             item.setMealLabel(MEAL_LABELS.getOrDefault(mealType, mealType.name()));
             item.setCalorieKcal(calorie);
             item.setCarbG(carb);
             item.setProteinG(protein);
             item.setFatG(fat);
             item.setRecordCount(mealRecords.size());
-            item.setStatus(mealRecords.isEmpty() ? "EMPTY" : (carb.compareTo(BigDecimal.valueOf(90)) > 0 ? "CARB_HIGH" : "OK"));
+            item.setStatus(mealRecords.isEmpty() ? "未记录" : (carb.compareTo(BigDecimal.valueOf(90)) > 0 ? "碳水偏高" : "合适"));
             items.add(item);
         }
         return items;
@@ -545,10 +548,19 @@ public class DietService {
     }
 
     private DietRecord.MealType parseMealType(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        switch (normalized) {
+            case "早餐" -> { return DietRecord.MealType.BREAKFAST; }
+            case "午餐" -> { return DietRecord.MealType.LUNCH; }
+            case "晚餐" -> { return DietRecord.MealType.DINNER; }
+            case "加餐" -> { return DietRecord.MealType.SNACK; }
+            default -> {
+            }
+        }
         try {
-            return DietRecord.MealType.valueOf(value.toUpperCase());
+            return DietRecord.MealType.valueOf(normalized);
         } catch (Exception ex) {
-            return DietRecord.MealType.SNACK;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "餐次选择不正确");
         }
     }
 
@@ -557,16 +569,6 @@ public class DietService {
             return null;
         }
         return value.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal sum(List<BigDecimal> values) {
-        BigDecimal result = BigDecimal.ZERO;
-        for (BigDecimal value : values) {
-            if (value != null) {
-                result = result.add(value);
-            }
-        }
-        return result.setScale(2, RoundingMode.HALF_UP);
     }
 
     private Map<Long, FoodNutrition> loadFoods(List<Long> foodIds) {
@@ -586,10 +588,9 @@ public class DietService {
     private DietDto.RecordResponse toRecordResponse(DietRecord record, String foodName) {
         DietDto.RecordResponse response = new DietDto.RecordResponse();
         response.setId(record.getId());
-        response.setUserId(record.getUserId());
         response.setRecordDate(record.getRecordDate());
         response.setRecordTime(record.getRecordTime());
-        response.setMealType(record.getMealType() != null ? record.getMealType().name() : null);
+        response.setMealType(DisplayLabel.mealType(record.getMealType()));
         response.setFoodId(record.getFoodId());
         response.setFoodName(foodName);
         response.setAmountG(record.getAmountG());

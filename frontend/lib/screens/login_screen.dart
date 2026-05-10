@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import '../services/auth_api_service.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/local_captcha_service.dart';
 import '../services/notification_service.dart';
+import '../utils/json_helpers.dart';
+import '../widgets/captcha_row.dart';
+import '../widgets/field_label.dart';
 import 'main_shell.dart';
 import 'register_screen.dart';
 
@@ -32,7 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
   int _smsCountdown = 0;
   Timer? _smsTimer;
   String? _error;
-  LocalCaptcha? _captcha;
+  String? _captchaChallengeId;
+  String? _captchaCode;
+  bool _captchaLoading = false;
 
   @override
   void initState() {
@@ -40,27 +44,47 @@ class _LoginScreenState extends State<LoginScreen> {
     _refreshCaptcha();
   }
 
-  void _refreshCaptcha() {
+  Future<void> _refreshCaptcha() async {
     setState(() {
-      _captcha = LocalCaptchaService.generate();
+      _captchaLoading = true;
       _captchaCtrl.clear();
     });
+    try {
+      final res = await AuthApiService.get('/auth/captcha');
+      if (!mounted) return;
+      setState(() {
+        _captchaChallengeId = res['challengeId']?.toString();
+        _captchaCode = (res['imageDataUri'] ?? res['displayCode'])?.toString();
+        _captchaLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _captchaChallengeId = null;
+        _captchaCode = null;
+        _captchaLoading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _captchaChallengeId = null;
+        _captchaCode = null;
+        _captchaLoading = false;
+        _error = '图形验证码加载失败，请稍后重试';
+      });
+    }
   }
 
   Future<void> _sendLoginSmsCode() async {
     final phone = _phoneCtrl.text.trim();
     final captcha = _captchaCtrl.text.trim();
-    if (!_isPhoneValid(phone)) {
+    if (!isPhoneValid(phone)) {
       setState(() => _error = '请输入正确的 11 位手机号');
       return;
     }
-    if (_captcha == null || captcha.isEmpty) {
+    if (_captchaChallengeId == null || captcha.isEmpty) {
       setState(() => _error = '请输入图形验证码');
-      return;
-    }
-    if (!LocalCaptchaService.verify(captcha: _captcha!, input: captcha)) {
-      setState(() => _error = '图形验证码错误，请重新输入');
-      _refreshCaptcha();
       return;
     }
 
@@ -73,38 +97,30 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await AuthApiService.post('/auth/sms/send', {
         'phone': phone,
         'scene': 'LOGIN',
+        'captchaChallengeId': _captchaChallengeId,
+        'captchaCode': captcha,
       });
-      final debugCode = res['debugCode']?.toString();
-      if (debugCode != null && debugCode.isNotEmpty) {
-        _smsCtrl.text = debugCode;
-      }
-      _startSmsCountdown(_readInt(res['cooldownSeconds']) ?? 60);
+      _startSmsCountdown(readInt(res['cooldownSeconds']) ?? 60);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            debugCode != null && debugCode.isNotEmpty
-                ? '验证码已发送，当前开发验证码：$debugCode'
-                : '验证码已发送，请注意查收短信',
-          ),
-        ),
-      );
-      _refreshCaptcha();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('验证码已发送，请注意查收短信')));
+      await _refreshCaptcha();
       if (!mounted) return;
       setState(() {
         _sendingSms = false;
       });
     } on ApiException catch (e) {
-      _refreshCaptcha();
+      await _refreshCaptcha();
       if (!mounted) return;
       setState(() {
         _error = e.message;
         _sendingSms = false;
       });
-    } on http.ClientException catch (e) {
+    } on http.ClientException {
       if (!mounted) return;
       setState(() {
-        _error = '网络连接失败：${e.message}';
+        _error = '网络连接失败，请稍后重试';
         _sendingSms = false;
       });
     } on TimeoutException {
@@ -113,10 +129,10 @@ class _LoginScreenState extends State<LoginScreen> {
         _error = '连接超时，请稍后重试';
         _sendingSms = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '发送验证码失败：$e';
+        _error = '发送验证码失败，请稍后重试';
         _sendingSms = false;
       });
     }
@@ -128,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final smsCode = _smsCtrl.text.trim();
     final captcha = _captchaCtrl.text.trim();
 
-    if (!_isPhoneValid(phone)) {
+    if (!isPhoneValid(phone)) {
       setState(() => _error = '请输入正确的 11 位手机号');
       return;
     }
@@ -137,13 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _error = '请输入登录密码');
         return;
       }
-      if (_captcha == null || captcha.isEmpty) {
+      if (_captchaChallengeId == null || captcha.isEmpty) {
         setState(() => _error = '请输入图形验证码');
-        return;
-      }
-      if (!LocalCaptchaService.verify(captcha: _captcha!, input: captcha)) {
-        setState(() => _error = '图形验证码错误，请重新输入');
-        _refreshCaptcha();
         return;
       }
     } else if (smsCode.isEmpty) {
@@ -161,6 +172,10 @@ class _LoginScreenState extends State<LoginScreen> {
         'phone': phone,
         'password': pwd,
         'smsCode': smsCode,
+        'captchaChallengeId': _mode == _LoginMode.password
+            ? _captchaChallengeId
+            : null,
+        'captchaCode': _mode == _LoginMode.password ? captcha : null,
         'loginType': _mode == _LoginMode.password ? 'PASSWORD' : 'SMS',
       });
       await AuthService.saveLoginResult(res);
@@ -171,17 +186,17 @@ class _LoginScreenState extends State<LoginScreen> {
       ).pushReplacement(MaterialPageRoute(builder: (_) => const MainShell()));
     } on ApiException catch (e) {
       if (_mode == _LoginMode.password) {
-        _refreshCaptcha();
+        await _refreshCaptcha();
       }
       if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } on http.ClientException catch (e) {
+    } on http.ClientException {
       if (!mounted) return;
       setState(() {
-        _error = '网络连接失败：${e.message}';
+        _error = '网络连接失败，请稍后重试';
         _loading = false;
       });
     } on TimeoutException {
@@ -190,10 +205,10 @@ class _LoginScreenState extends State<LoginScreen> {
         _error = '连接超时，请稍后重试';
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '登录失败：$e';
+        _error = '登录失败，请稍后重试';
         _loading = false;
       });
     }
@@ -219,13 +234,6 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     });
   }
-
-  int? _readInt(dynamic value) {
-    if (value is int) return value;
-    return int.tryParse(value?.toString() ?? '');
-  }
-
-  bool _isPhoneValid(String phone) => RegExp(r'^1[3-9]\d{9}$').hasMatch(phone);
 
   @override
   void dispose() {
@@ -290,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
                         const SizedBox(height: 20),
-                        const _FieldLabel('手机号'),
+                        const FieldLabel('手机号'),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _phoneCtrl,
@@ -301,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         if (_mode == _LoginMode.password) ...[
                           const SizedBox(height: 14),
-                          const _FieldLabel('密码'),
+                          const FieldLabel('密码'),
                           const SizedBox(height: 8),
                           TextField(
                             controller: _pwdCtrl,
@@ -314,16 +322,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             },
                           ),
                           const SizedBox(height: 14),
-                          const _FieldLabel('图形验证码'),
+                          const FieldLabel('图形验证码'),
                           const SizedBox(height: 8),
-                          _CaptchaRow(
+                          CaptchaRow(
                             controller: _captchaCtrl,
-                            code: _captcha?.code,
-                            onRefresh: _refreshCaptcha,
+                            imageDataUri: _captchaCode,
+                            loading: _captchaLoading,
+                            onRefresh: () => _refreshCaptcha(),
                           ),
                         ] else ...[
                           const SizedBox(height: 14),
-                          const _FieldLabel('短信验证码'),
+                          const FieldLabel('短信验证码'),
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -353,12 +362,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          const _FieldLabel('图形验证码'),
+                          const FieldLabel('图形验证码'),
                           const SizedBox(height: 8),
-                          _CaptchaRow(
+                          CaptchaRow(
                             controller: _captchaCtrl,
-                            code: _captcha?.code,
-                            onRefresh: _refreshCaptcha,
+                            imageDataUri: _captchaCode,
+                            loading: _captchaLoading,
+                            onRefresh: () => _refreshCaptcha(),
                           ),
                           const SizedBox(height: 6),
                           Text(
@@ -501,80 +511,6 @@ class _ModeButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _CaptchaRow extends StatelessWidget {
-  const _CaptchaRow({
-    required this.controller,
-    required this.code,
-    required this.onRefresh,
-  });
-
-  final TextEditingController controller;
-  final String? code;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(hintText: '请输入右侧验证码'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Container(
-          width: 128,
-          height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF2F8F6),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD9E8E4)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  code ?? '----',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    letterSpacing: 4,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0E4B43),
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: onRefresh,
-                tooltip: '刷新验证码',
-                icon: const Icon(Icons.refresh_rounded, size: 20),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(
-        context,
-      ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
     );
   }
 }

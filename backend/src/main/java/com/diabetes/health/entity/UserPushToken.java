@@ -9,7 +9,7 @@ import java.time.Instant;
  * 用户设备推送 token 表（用于 APP 通知）
  */
 @Entity
-@Table(name = "user_push_token")
+@Table(name = "user_push_token", indexes = @Index(name = "idx_upt_user_token", columnList = "user_id,push_token"))
 @Getter
 @Setter
 @NoArgsConstructor

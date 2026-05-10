@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../utils/display_text.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/error_pane.dart';
 import '../widgets/premium_health_ui.dart';
 import 'glucose_reminder_screen.dart';
 import 'login_screen.dart';
@@ -17,26 +20,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const Map<String, String> _reminderTypeNames = {
-    'GLUCOSE_TEST': '测血糖提醒',
-    'MEDICINE': '用药提醒',
-    'EXERCISE': '运动提醒',
-    'DIET': '饮食提醒',
-  };
-
-  static const Map<String, String> _repeatTypeNames = {
-    'DAILY': '每天',
-    'WORKDAY': '工作日',
-    'CUSTOM': '自定义',
-  };
-
-  static const Map<String, String> _diabetesTypeNames = {
-    'TYPE1': '一型',
-    'TYPE2': '二型',
-    'OTHER': '1.5型',
-    'GESTATIONAL': '妊娠型',
-  };
-
   Map<String, dynamic>? _user;
   bool _loading = true;
   String? _error;
@@ -84,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     current['nickname'] = nickname;
     current['avatarUrl'] = avatarUrl;
 
-    final healthProfile = _asMap(current['healthProfile']);
+    final healthProfile = asMap(current['healthProfile']);
     if (healthProfile.isNotEmpty || nickname != null || avatarUrl != null) {
       healthProfile['nickname'] = nickname;
       healthProfile['avatarUrl'] = avatarUrl;
@@ -112,23 +95,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return value.map((k, v) => MapEntry('$k', v));
-    return <String, dynamic>{};
-  }
-
   List<Map<String, dynamic>> _asMapList(dynamic value) {
     if (value is List) {
-      return value.map(_asMap).toList();
+      return value.map(asMap).toList();
     }
     return const <Map<String, dynamic>>[];
   }
 
   String _diabetesTypeText(dynamic value) {
-    final key = value?.toString();
-    if (key == null || key.isEmpty) return '未设置';
-    return _diabetesTypeNames[key] ?? key;
+    return DisplayText.diabetesType(value);
+  }
+
+  String _reminderRemarkText(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return '';
+    return DisplayText.label(
+      raw,
+      fallback: DisplayText.text(raw, fallback: ''),
+    );
   }
 
   Future<void> _logout() async {
@@ -137,6 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('退出登录'),
         content: const Text('确认退出当前账号吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -228,13 +213,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final pbgMaxCtrl = TextEditingController(
       text: '${profile['targetPbgMax'] ?? ''}',
     );
-    var gender = (profile['gender'] ?? 'UNKNOWN').toString();
-    var diabetesType = switch ((profile['diabetesType'] ?? 'TYPE2')
-        .toString()) {
-      'TYPE1' => 'TYPE1',
-      'TYPE2' => 'TYPE2',
-      'OTHER' => 'OTHER',
-      'GESTATIONAL' => 'GESTATIONAL',
+    var gender = switch (DisplayText.gender(profile['gender'])) {
+      '男' => 'MALE',
+      '女' => 'FEMALE',
+      _ => 'UNKNOWN',
+    };
+    var diabetesType = switch (DisplayText.diabetesType(
+      profile['diabetesType'],
+    )) {
+      '一型' => 'TYPE1',
+      '二型' => 'TYPE2',
+      '妊娠型' || '妊娠期' => 'GESTATIONAL',
+      '1.5型' || '1.5型/其他' => 'OTHER',
       _ => 'TYPE2',
     };
 
@@ -408,6 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               : remarkCtrl.text.trim(),
                         };
                         body.removeWhere((_, v) => v == null);
+                        final messenger = ScaffoldMessenger.of(context);
                         try {
                           await ApiService.put(
                             '/users/me/health-profile',
@@ -416,9 +407,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           await _load();
-                          if (!mounted) return;
-                          AppToast.success(context, '健康档案修改成功');
+                          messenger.hideCurrentSnackBar();
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('健康档案修改成功')),
+                          );
                         } on ApiException catch (e) {
+                          if (!ctx.mounted) return;
                           ScaffoldMessenger.of(
                             ctx,
                           ).showSnackBar(SnackBar(content: Text(e.message)));
@@ -435,14 +429,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
 
-    heightCtrl.dispose();
-    weightCtrl.dispose();
-    medCtrl.dispose();
-    remarkCtrl.dispose();
-    fbgMinCtrl.dispose();
-    fbgMaxCtrl.dispose();
-    pbgMinCtrl.dispose();
-    pbgMaxCtrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      heightCtrl.dispose();
+      weightCtrl.dispose();
+      medCtrl.dispose();
+      remarkCtrl.dispose();
+      fbgMinCtrl.dispose();
+      fbgMaxCtrl.dispose();
+      pbgMinCtrl.dispose();
+      pbgMaxCtrl.dispose();
+    });
   }
 
   Future<void> _showHealthProfile() async {
@@ -463,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
-              _infoRow('性别', profile['gender']),
+              _infoRow('性别', DisplayText.gender(profile['gender'])),
               _infoRow(
                 '身高',
                 profile['heightCm'] == null
@@ -529,14 +525,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  title: Text(
-                    _reminderTypeNames[item['type']?.toString()] ??
-                        '${item['type'] ?? '提醒'}',
-                  ),
+                  title: Text(DisplayText.reminderType(item['type'])),
                   subtitle: Text(
                     '${item['timeOfDay'] ?? '--:--'} · '
-                    '${_repeatTypeNames[item['repeatType']?.toString()] ?? '每天'}'
-                    '${item['remark']?.toString().isNotEmpty == true ? ' · ${item['remark']}' : ''}',
+                    '${DisplayText.repeatType(item['repeatType'])}'
+                    '${_reminderRemarkText(item['remark']).isNotEmpty ? ' · ${_reminderRemarkText(item['remark'])}' : ''}',
                   ),
                   trailing: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -611,9 +604,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       : const Color(0xFFE08A22);
                   final label = isHigh ? '偏高' : '偏低';
                   final timeStr = item['createdAt'] is String
-                      ? DateFormat(
-                          'yyyy-MM-dd HH:mm',
-                        ).format(DateTime.parse(item['createdAt']).toLocal())
+                      ? DateFormat('yyyy-MM-dd HH:mm').format(
+                          DateTime.parse(
+                            item['createdAt'].toString(),
+                          ).toLocal(),
+                        )
                       : '--';
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -706,6 +701,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -784,7 +780,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = (user['nickname'] ?? user['phone'] ?? '用户').toString();
     final phone = (user['phone'] ?? '').toString();
     final avatarUrl = (user['avatarUrl'] ?? '').toString();
-    final profile = _asMap(user['healthProfile']);
+    final profile = asMap(user['healthProfile']);
     final diabetesType = _diabetesTypeText(profile['diabetesType']);
     return Container(
       padding: const EdgeInsets.all(20),
@@ -870,9 +866,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _infoRow(String label, dynamic value) {
-    final text = value?.toString().trim().isNotEmpty == true
-        ? value.toString()
-        : '未填写';
+    final text = DisplayText.text(value);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -909,7 +903,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
             ? Center(
-                child: _ErrorPane(message: _error!, onRetry: _load),
+                child: ErrorPane(message: _error!, onRetry: _load),
               )
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -982,33 +976,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _ErrorPane extends StatelessWidget {
-  const _ErrorPane({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            size: 42,
-            color: Color(0xFFC53A2E),
-          ),
-          const SizedBox(height: 10),
-          Text(message, style: const TextStyle(color: Color(0xFFC53A2E))),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('重试')),
-        ],
-      ),
-    );
-  }
-}
-
 class _BasicProfileEditScreen extends StatefulWidget {
   const _BasicProfileEditScreen({
     required this.initialNickname,
@@ -1066,7 +1033,7 @@ class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '当前后端仍然保存头像地址，因此这里支持直接粘贴图片链接，点头像就能改。',
+                '支持粘贴图片链接作为头像，也可以清除后使用默认头像。',
                 style: TextStyle(color: Color(0xFF5A7673), height: 1.45),
               ),
               const SizedBox(height: 14),
@@ -1101,7 +1068,9 @@ class _BasicProfileEditScreenState extends State<_BasicProfileEditScreen> {
         );
       },
     );
-    controller.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
     if (result == null || !mounted) return;
     setState(() {
       _avatarUrl = result.trim();

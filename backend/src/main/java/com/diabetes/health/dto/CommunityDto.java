@@ -1,6 +1,9 @@
 package com.diabetes.health.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.time.Instant;
 import java.util.List;
@@ -9,18 +12,21 @@ public class CommunityDto {
 
     @Data
     public static class CreatePostRequest {
+        @NotBlank(message = "帖子内容不能为空")
+        @Size(max = 1200, message = "帖子内容不能超过1200字")
         private String content;
     }
 
     @Data
     public static class CreateCommentRequest {
+        @NotBlank(message = "评论内容不能为空")
+        @Size(max = 800, message = "评论内容不能超过800字")
         private String content;
     }
 
     @Data
     public static class PostResponse {
         private Long id;
-        private Long userId;
         private String authorName;
         private String authorRole;
         private String authorAvatarUrl;
@@ -37,12 +43,25 @@ public class CommunityDto {
     public static class CommentResponse {
         private Long id;
         private Long postId;
-        private Long userId;
         private String authorName;
         private String authorRole;
         private String authorAvatarUrl;
         private String content;
         private Instant createdAt;
+    }
+
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    public static class AdminPostResponse extends PostResponse {
+        private Long userId;
+        private String authorRoleRaw;
+    }
+
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    public static class AdminCommentResponse extends CommentResponse {
+        private Long userId;
+        private String authorRoleRaw;
     }
 
     @Data

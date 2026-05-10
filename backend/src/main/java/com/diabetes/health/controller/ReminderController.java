@@ -38,7 +38,7 @@ public class ReminderController {
     @PutMapping("/api/reminders/{id}")
     public ReminderDto.ReminderResponse update(@AuthenticationPrincipal CurrentUser user,
                                                 @PathVariable Long id,
-                                                @RequestBody ReminderDto.UpdateReminderRequest request) {
+                                                @Valid @RequestBody ReminderDto.UpdateReminderRequest request) {
         return reminderService.update(user, id, request);
     }
 

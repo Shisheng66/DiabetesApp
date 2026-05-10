@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../utils/json_helpers.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/premium_health_ui.dart';
 
@@ -26,28 +27,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     _loadAll();
   }
 
-  Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) {
-      return value.map((key, val) => MapEntry('$key', val));
-    }
-    return const {};
-  }
-
-  int? _toInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
-    return null;
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value');
-  }
-
   String _numText(dynamic value, {int fraction = 0}) {
-    final v = _toDouble(value);
+    final v = toDouble(value);
     if (v == null) return '0';
     if (fraction == 0) return v.round().toString();
     return v.toStringAsFixed(fraction);
@@ -83,8 +64,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
       if (!mounted) return;
       setState(() {
-        _types = _extractList(typesRes);
-        _records = _extractList(recordsRes);
+        _types = extractList(typesRes);
+        _records = extractList(recordsRes);
         _energyTip = energy;
         _energyError = energyErr;
         _loading = false;
@@ -104,26 +85,15 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     }
   }
 
-  List<dynamic> _extractList(Map<String, dynamic> res) {
-    final data = res['data'];
-    if (data is List) return data;
-    final content = res['content'];
-    if (content is List) return content;
-    if (data is Map<String, dynamic> && data['content'] is List) {
-      return data['content'] as List;
-    }
-    return const [];
-  }
-
   Future<void> _showAdd() async {
     if (_types.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('未找到运动类型，请检查后端数据')));
+      ).showSnackBar(const SnackBar(content: Text('暂时没有可用运动类型，请稍后重试')));
       return;
     }
 
-    int? typeId = _toInt(_asMap(_types.first)['id']);
+    int? typeId = toInt(asMap(_types.first)['id']);
     final durationCtrl = TextEditingController();
     final remarkCtrl = TextEditingController();
     var submitting = false;
@@ -155,9 +125,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                       initialValue: typeId,
                       decoration: const InputDecoration(labelText: '运动类型'),
                       items: _types.map((raw) {
-                        final item = _asMap(raw);
+                        final item = asMap(raw);
                         return DropdownMenuItem<int>(
-                          value: _toInt(item['id']),
+                          value: toInt(item['id']),
                           child: Text('${item['name'] ?? ''}'),
                         );
                       }).toList(),
@@ -239,6 +209,24 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   Future<void> _deleteRecord(dynamic id) async {
     if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除这条记录吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(color: Color(0xFFC53A2E))),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ApiService.delete('/exercise/records/$id');
       await _loadAll();
@@ -249,6 +237,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.info(context, '删除失败，请稍后重试');
     }
   }
 
@@ -262,9 +253,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final intake = _toDouble(_energyTip?['todayCalorieIntake']) ?? 0;
-    final burned = _toDouble(_energyTip?['todayCalorieBurned']) ?? 0;
-    final remaining = _toDouble(_energyTip?['remainingBurnKcal']) ?? 0;
+    final intake = toDouble(_energyTip?['todayCalorieIntake']) ?? 0;
+    final burned = toDouble(_energyTip?['todayCalorieBurned']) ?? 0;
+    final remaining = toDouble(_energyTip?['remainingBurnKcal']) ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -467,7 +458,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           if (suggestions.isNotEmpty) ...[
             const SizedBox(height: 14),
             ...suggestions.map((raw) {
-              final item = _asMap(raw);
+              final item = asMap(raw);
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
@@ -542,7 +533,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
             )
           else
             ..._records.map((raw) {
-              final item = _asMap(raw);
+              final item = asMap(raw);
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),

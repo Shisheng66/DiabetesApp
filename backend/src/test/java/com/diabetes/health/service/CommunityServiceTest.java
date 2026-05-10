@@ -131,7 +131,7 @@ class CommunityServiceTest {
                 .createdAt(Instant.parse("2026-04-13T10:00:00Z"))
                 .build();
 
-        when(communityPostRepository.findById(15L)).thenReturn(Optional.of(post));
+        when(communityPostRepository.findByIdForUpdate(15L)).thenReturn(Optional.of(post));
         when(communityPostInteractionRepository.findByPostIdAndUserId(15L, 2L)).thenReturn(Optional.empty())
                 .thenReturn(Optional.of(CommunityPostInteraction.builder()
                         .id(101L)
@@ -155,6 +155,7 @@ class CommunityServiceTest {
             post.setLikeCount(post.getLikeCount() + 1);
             return null;
         }).when(communityPostRepository).adjustLikeCount(15L, 1);
+        when(communityPostRepository.findById(15L)).thenReturn(Optional.of(post));
 
         CommunityDto.PostResponse response = communityService.toggleLike(user, 15L);
 

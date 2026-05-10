@@ -31,14 +31,12 @@ public class JwtUtil {
         this.expirationMs = expirationSeconds * 1000L;
     }
 
-    public String generate(Long userId, String phone, String role) {
+    public String generate(Long userId) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
         // jjwt 0.12.x：使用 subject() 替代 claim("sub", ...)
         return Jwts.builder()
                 .subject(String.valueOf(userId))
-                .claim("phone", phone)
-                .claim("role", role)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(key)

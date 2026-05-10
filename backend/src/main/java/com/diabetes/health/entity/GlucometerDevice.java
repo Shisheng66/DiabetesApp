@@ -9,7 +9,7 @@ import java.time.Instant;
  * 血糖仪设备表（含硅基等）
  */
 @Entity
-@Table(name = "glucometer_device")
+@Table(name = "glucometer_device", indexes = @Index(name = "idx_gd_user_sn", columnList = "user_id,device_sn"))
 @Getter
 @Setter
 @NoArgsConstructor

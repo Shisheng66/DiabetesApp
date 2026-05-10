@@ -43,16 +43,10 @@ public class AuthService {
         }
         authVerificationService.verifySmsCode(req.getPhone(), AuthDto.SmsScene.REGISTER, req.getSmsCode());
         UserAccount.AccountStatus status = UserAccount.AccountStatus.NORMAL;
-        UserAccount.Role role;
-        try {
-            role = UserAccount.Role.valueOf(req.getRole() != null ? req.getRole().toUpperCase() : "PATIENT");
-        } catch (IllegalArgumentException e) {
-            role = UserAccount.Role.PATIENT;
-        }
         UserAccount account = UserAccount.builder()
                 .phone(req.getPhone())
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
-                .role(role)
+                .role(UserAccount.Role.PATIENT)
                 .status(status)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -67,11 +61,12 @@ public class AuthService {
                 .build();
         healthProfileRepository.save(profile);
 
-        String token = jwtUtil.generate(account.getId(), account.getPhone(), account.getRole().name());
+        String token = jwtUtil.generate(account.getId());
         AuthDto.UserInfo info = toUserInfo(account, profile);
         return new AuthDto.LoginResponse(token, info);
     }
 
+    @Transactional
     public AuthDto.LoginResponse login(AuthDto.LoginRequest req) {
         AuthDto.LoginType loginType = req.getLoginType() == null ? AuthDto.LoginType.PASSWORD : req.getLoginType();
         UserAccount account = userAccountRepository.findByPhone(req.getPhone())
@@ -82,6 +77,7 @@ public class AuthService {
         if (loginType == AuthDto.LoginType.SMS) {
             authVerificationService.verifySmsCode(req.getPhone(), AuthDto.SmsScene.LOGIN, req.getSmsCode());
         } else {
+            authVerificationService.verifyCaptcha(req.getCaptchaChallengeId(), req.getCaptchaCode(), true);
             if (req.getPassword() == null || req.getPassword().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入登录密码");
             }
@@ -93,7 +89,7 @@ public class AuthService {
         userAccountRepository.save(account);
 
         UserHealthProfile profile = healthProfileRepository.findByUserId(account.getId()).orElse(null);
-        String token = jwtUtil.generate(account.getId(), account.getPhone(), account.getRole().name());
+        String token = jwtUtil.generate(account.getId());
         AuthDto.UserInfo info = toUserInfo(account, profile);
         return new AuthDto.LoginResponse(token, info);
     }
@@ -111,9 +107,7 @@ public class AuthService {
 
     private AuthDto.UserInfo toUserInfo(UserAccount account, UserHealthProfile profile) {
         AuthDto.UserInfo info = new AuthDto.UserInfo();
-        info.setId(account.getId());
         info.setPhone(account.getPhone());
-        info.setRole(account.getRole().name());
         if (profile != null) {
             info.setNickname(profile.getNickname());
             info.setAvatarUrl(profile.getAvatarUrl());

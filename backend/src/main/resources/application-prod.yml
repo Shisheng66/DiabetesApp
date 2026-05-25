@@ -1,0 +1,70 @@
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/diabetes_health?useSSL=true&allowPublicKeyRetrieval=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      idle-timeout: 300000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s
+
+server:
+  tomcat:
+    max-threads: 200
+    max-connections: 8192
+
+logging:
+  level:
+    root: WARN
+    com.diabetes.health: INFO
+    org.springframework.web: WARN
+    org.hibernate.SQL: OFF
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: Authorization,Content-Type,Accept
+    allow-credentials: false
+    max-age: 3600
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-seconds: 259200
+  auth:
+    captcha-expire-seconds: 180
+    sms-expire-seconds: 300
+    sms-cooldown-seconds: 60
+    expose-debug-sms-code: ${APP_AUTH_EXPOSE_DEBUG_SMS_CODE:false}
+  sms:
+    provider: ${APP_SMS_PROVIDER:http}
+    endpoint: ${APP_SMS_ENDPOINT}
+    token: ${APP_SMS_TOKEN}
+    signature: ${APP_SMS_SIGNATURE:}
+    template-id: ${APP_SMS_TEMPLATE_ID:}

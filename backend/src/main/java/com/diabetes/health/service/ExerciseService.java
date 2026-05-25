@@ -1,0 +1,216 @@
+package com.diabetes.health.service;
+
+import com.diabetes.health.dto.ExerciseDto;
+import com.diabetes.health.entity.DietRecord;
+import com.diabetes.health.entity.ExerciseRecord;
+import com.diabetes.health.entity.ExerciseType;
+import com.diabetes.health.entity.UserHealthProfile;
+import com.diabetes.health.repository.DietRecordRepository;
+import com.diabetes.health.repository.ExerciseRecordRepository;
+import com.diabetes.health.repository.ExerciseTypeRepository;
+import com.diabetes.health.repository.UserHealthProfileRepository;
+import com.diabetes.health.security.CurrentUser;
+import com.diabetes.health.util.MathUtil;
+import com.diabetes.health.util.PaginationUtils;
+import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+@RequiredArgsConstructor
+public class ExerciseService {
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
+
+    private final ExerciseRecordRepository exerciseRecordRepository;
+    private final ExerciseTypeRepository exerciseTypeRepository;
+    private final DietRecordRepository dietRecordRepository;
+    private final UserHealthProfileRepository userHealthProfileRepository;
+
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
+    public ExerciseDto.RecordResponse create(CurrentUser user, ExerciseDto.CreateRecordRequest req) {
+        ExerciseType type = exerciseTypeRepository.findById(req.getExerciseTypeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运动类型不存在"));
+
+        Integer durationMin = req.getDurationMin();
+        if (durationMin == null && req.getStartTime() != null && req.getEndTime() != null) {
+            durationMin = (int) ((req.getEndTime().getEpochSecond() - req.getStartTime().getEpochSecond()) / 60);
+        }
+
+        BigDecimal calorieKcal = req.getCalorieKcal();
+        if (calorieKcal == null && durationMin != null && type.getMetValue() != null) {
+            BigDecimal weight = resolveUserWeight(user.getId());
+            double hours = durationMin / 60.0;
+            calorieKcal = type.getMetValue()
+                    .multiply(weight)
+                    .multiply(BigDecimal.valueOf(hours))
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        ExerciseRecord record = ExerciseRecord.builder()
+                .userId(user.getId())
+                .exerciseTypeId(type.getId())
+                .startTime(req.getStartTime())
+                .endTime(req.getEndTime())
+                .durationMin(durationMin)
+                .distanceKm(req.getDistanceKm())
+                .calorieKcal(calorieKcal)
+                .remark(req.getRemark())
+                .build();
+        return toRecordResponse(exerciseRecordRepository.save(record), type.getName());
+    }
+
+    public List<ExerciseDto.RecordResponse> list(CurrentUser user, LocalDate startDate, LocalDate endDate, int page, int size) {
+        Map<Long, String> typeNames = loadExerciseTypeNames();
+        List<ExerciseRecord> list;
+        if (startDate != null && endDate != null) {
+            Instant start = startDate.atStartOfDay(APP_ZONE).toInstant();
+            Instant end = endDate.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
+            list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end, PaginationUtils.pageRequest(page, size));
+        } else {
+            list = exerciseRecordRepository.findByUserIdAndDeletedFalseOrderByStartTimeDesc(user.getId(), PaginationUtils.pageRequest(page, size));
+        }
+        return list.stream()
+                .map(record -> toRecordResponse(record, typeNames.getOrDefault(record.getExerciseTypeId(), "运动")))
+                .toList();
+    }
+
+    public ExerciseDto.DailySummaryResponse getDailySummary(CurrentUser user, LocalDate date) {
+        Instant start = date.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
+        List<ExerciseRecord> list = exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end);
+        Map<Long, String> typeNames = loadExerciseTypeNames();
+
+        ExerciseDto.DailySummaryResponse response = new ExerciseDto.DailySummaryResponse();
+        response.setDate(date.toString());
+        response.setTotalDurationMin(list.stream()
+                .filter(record -> record.getDurationMin() != null)
+                .mapToInt(ExerciseRecord::getDurationMin)
+                .sum());
+        response.setTotalCalorieKcal(MathUtil.sum(list.stream().map(ExerciseRecord::getCalorieKcal).toList()));
+        response.setRecords(list.stream()
+                .map(record -> toRecordResponse(record, typeNames.getOrDefault(record.getExerciseTypeId(), "运动")))
+                .toList());
+        return response;
+    }
+
+    @Transactional
+    @CacheEvict(value = "dashboard", key = "#user.id")
+    public void delete(CurrentUser user, Long id) {
+        ExerciseRecord record = exerciseRecordRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运动记录不存在"));
+        if (!record.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权删除该记录");
+        }
+        record.setDeleted(true);
+        exerciseRecordRepository.save(record);
+    }
+
+    public List<ExerciseDto.TypeResponse> listExerciseTypes() {
+        return exerciseTypeRepository.findAll().stream().map(ExerciseDto.TypeResponse::from).toList();
+    }
+
+    public ExerciseDto.DailyRecommendationResponse getDailyRecommendation(CurrentUser user, LocalDate date) {
+        BigDecimal intake = MathUtil.sum(dietRecordRepository.findByUserIdAndRecordDateAndDeletedFalseOrderByRecordTimeDesc(user.getId(), date)
+                .stream()
+                .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
+                .toList());
+
+        Instant start = date.atStartOfDay(APP_ZONE).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
+        BigDecimal burned = MathUtil.sum(exerciseRecordRepository.findByUserIdAndStartTimeBetweenAndDeletedFalseOrderByStartTimeDesc(user.getId(), start, end)
+                .stream()
+                .map(record -> record.getCalorieKcal() == null ? BigDecimal.ZERO : record.getCalorieKcal())
+                .toList());
+
+        BigDecimal weight = resolveUserWeight(user.getId());
+        BigDecimal recommendedIntake = weight.multiply(new BigDecimal("25"));
+        BigDecimal suggestedBurn = intake.compareTo(recommendedIntake) > 0
+                ? intake.subtract(recommendedIntake).multiply(new BigDecimal("0.45")).add(new BigDecimal("120"))
+                : intake.multiply(new BigDecimal("0.12")).max(new BigDecimal("90"));
+        suggestedBurn = suggestedBurn.min(new BigDecimal("600")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remaining = suggestedBurn.subtract(burned).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+
+        List<ExerciseDto.SuggestionItem> suggestions = exerciseTypeRepository.findAll().stream()
+                .filter(type -> type.getMetValue() != null)
+                .map(type -> toSuggestion(type, weight, remaining))
+                .sorted((a, b) -> Integer.compare(a.getRecommendedMinutes(), b.getRecommendedMinutes()))
+                .limit(4)
+                .toList();
+
+        ExerciseDto.DailyRecommendationResponse response = new ExerciseDto.DailyRecommendationResponse();
+        response.setDate(date);
+        response.setTodayCalorieIntake(intake);
+        response.setTodayCalorieBurned(burned);
+        response.setSuggestedBurnKcal(suggestedBurn);
+        response.setRemainingBurnKcal(remaining);
+        response.setSuggestions(suggestions);
+        if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+            response.setSummary("今天的运动消耗已经达到建议目标，保持补水和拉伸即可。");
+        } else {
+            response.setSummary("根据你今天的饮食摄入，建议再消耗约 " + remaining.toPlainString() + " kcal，下面这些运动更合适。");
+        }
+        return response;
+    }
+
+    private ExerciseDto.SuggestionItem toSuggestion(ExerciseType type, BigDecimal weight, BigDecimal remaining) {
+        BigDecimal caloriePerHour = type.getMetValue().multiply(weight);
+        BigDecimal caloriePerMinute = caloriePerHour.divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
+        int recommendedMinutes = remaining.compareTo(BigDecimal.ZERO) <= 0
+                ? 10
+                : remaining.divide(caloriePerMinute, 0, RoundingMode.UP).intValue();
+        recommendedMinutes = Math.max(10, recommendedMinutes);
+
+        ExerciseDto.SuggestionItem item = new ExerciseDto.SuggestionItem();
+        item.setExerciseTypeId(type.getId());
+        item.setExerciseTypeName(type.getName());
+        item.setRecommendedMinutes(recommendedMinutes);
+        item.setEstimatedCalorieKcal(caloriePerMinute
+                .multiply(BigDecimal.valueOf(recommendedMinutes))
+                .setScale(2, RoundingMode.HALF_UP));
+        return item;
+    }
+
+    private BigDecimal resolveUserWeight(Long userId) {
+        return userHealthProfileRepository.findByUserId(userId)
+                .map(UserHealthProfile::getWeightKg)
+                .filter(weight -> weight != null && weight.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(new BigDecimal("65"));
+    }
+
+    private Map<Long, String> loadExerciseTypeNames() {
+        Map<Long, String> result = new HashMap<>();
+        for (ExerciseType type : exerciseTypeRepository.findAll()) {
+            result.put(type.getId(), type.getName());
+        }
+        return result;
+    }
+
+    private ExerciseDto.RecordResponse toRecordResponse(ExerciseRecord record, String typeName) {
+        ExerciseDto.RecordResponse response = new ExerciseDto.RecordResponse();
+        response.setId(record.getId());
+        response.setExerciseTypeId(record.getExerciseTypeId());
+        response.setExerciseTypeName(typeName);
+        response.setStartTime(record.getStartTime());
+        response.setEndTime(record.getEndTime());
+        response.setDurationMin(record.getDurationMin());
+        response.setDistanceKm(record.getDistanceKm());
+        response.setCalorieKcal(record.getCalorieKcal());
+        response.setRemark(record.getRemark());
+        response.setCreatedAt(record.getCreatedAt());
+        return response;
+    }
+}

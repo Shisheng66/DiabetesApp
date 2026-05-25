@@ -1,0 +1,359 @@
+========================================
+  糖尿病健康管理系统 - 前后端连接指南
+========================================
+
+## 一、后端 API 基础信息
+
+### 1. 后端运行地址
+- **本地开发**: http://localhost:8080
+- **所有接口路径**: /api/*
+
+### 2. 核心接口列表
+
+#### 【无需登录】的接口
+1. 健康检查：GET /api/health
+2. 用户注册：POST /api/auth/register
+3. 用户登录：POST /api/auth/login
+
+#### 【需要登录】的接口 (需在 Header 中携带 token)
+- Header 格式：Authorization: Bearer <token>
+
+主要功能模块:
+- 用户信息：/api/users/me
+- 血糖记录：/api/blood-glucose/records
+- 饮食管理：/api/diet/records, /api/diet/foods
+- 运动管理：/api/exercise/records, /api/exercise/types
+- 健康提醒：/api/reminders
+- 今日概览：/api/dashboard/today
+
+
+## 二、前端如何连接后端？
+
+### 方式 1: Vue/React + Axios (推荐)
+
+#### 步骤 1: 安装 Axios
+```bash
+npm install axios
+```
+
+#### 步骤 2: 创建 API 请求配置文件
+在项目中创建 `src/utils/request.js`:
+
+```javascript
+import axios from 'axios'
+
+// 创建 axios 实例
+const request = axios.create({
+  baseURL: 'http://localhost:8080', // 后端地址
+  timeout: 5000 // 请求超时时间
+})
+
+// 请求拦截器 - 自动添加 token
+request.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  error => {
+    return Promise.reject(error)
+  }
+)
+
+// 响应拦截器
+request.interceptors.response.use(
+  response => {
+    return response.data
+  },
+  error => {
+    if (error.response && error.response.status === 401) {
+      // token 过期或无效，跳转到登录页
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export default request
+```
+
+#### 步骤 3: 创建认证 API
+创建 `src/api/auth.js`:
+
+```javascript
+import request from '@/utils/request'
+
+// 登录
+export function login(phone, password) {
+  return request({
+    url: '/api/auth/login',
+    method: 'post',
+    data: {
+      phone,
+      password
+    }
+  })
+}
+
+// 注册
+export function register(phone, password, role = 'PATIENT') {
+  return request({
+    url: '/api/auth/register',
+    method: 'post',
+    data: {
+      phone,
+      password,
+      role
+    }
+  })
+}
+```
+
+#### 步骤 4: 在登录页面使用
+```javascript
+import { login } from '@/api/auth'
+
+async handleLogin() {
+  try {
+    const response = await login(this.phone, this.password)
+    // 保存 token
+    localStorage.setItem('token', response.accessToken)
+    // 跳转到首页
+    this.$router.push('/')
+  } catch (error) {
+    console.error('登录失败:', error)
+    alert('登录失败：' + error.message)
+  }
+}
+```
+
+
+### 方式 2: 小程序连接后端
+
+#### 小程序请求封装
+```javascript
+// utils/request.js
+const BASE_URL = 'http://localhost:8080'
+
+function request(url, method = 'GET', data = {}) {
+  const token = wx.getStorageSync('token')
+  
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: BASE_URL + url,
+      method: method,
+      data: data,
+      header: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      success: resolve,
+      fail: reject
+    })
+  })
+}
+
+module.exports = {
+  request
+}
+
+// 使用示例
+const { request } = require('../../utils/request')
+
+// 登录
+request('/api/auth/login', 'POST', {
+  phone: '13800138000',
+  password: 'Abc12345'
+}).then(res => {
+  wx.setStorageSync('token', res.data.accessToken)
+})
+```
+
+
+### 方式 3: Flutter 移动应用
+
+#### 添加依赖
+```yaml
+# pubspec.yaml
+dependencies:
+  dio: ^5.0.0
+  shared_preferences: ^2.0.0
+```
+
+#### 创建 Dio 客户端
+```dart
+// lib/utils/http_client.dart
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class HttpClient {
+  static final Dio _dio = Dio(BaseOptions(
+    baseUrl: 'http://localhost:8080',
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
+  ));
+
+  static Future<void> setToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+    }
+  }
+
+  static Future<Response> get(String path) async {
+    await setToken();
+    return _dio.get(path);
+  }
+
+  static Future<Response> post(String path, dynamic data) async {
+    await setToken();
+    return _dio.post(path, data: data);
+  }
+}
+
+// 使用示例
+// 登录
+final response = await HttpClient.post('/api/auth/login', {
+  'phone': '13800138000',
+  'password': 'Abc12345',
+});
+final token = response.data['accessToken'];
+```
+
+
+## 三、跨域配置 (CORS)
+
+如果遇到跨域问题，后端已配置好 CORS:
+
+查看文件：`src/main/java/com/diabetes/health/config/WebConfig.java`
+
+如果仍有问题，可以在开发环境中临时禁用浏览器跨域限制:
+
+### Chrome 开发模式
+```bash
+# Windows
+chrome.exe --disable-web-security --user-data-dir="C:/ChromeDev"
+
+# macOS
+open -n -a /Applications/Google\ Chrome.app --args --disable-web-security --user-data-dir="$HOME/chrome_dev"
+```
+
+
+## 四、快速测试工具
+
+### 使用 Postman 测试
+
+1. 下载：https://www.postman.com/downloads/
+2. 创建请求:
+   - 方法：POST
+   - URL: http://localhost:8080/api/auth/login
+   - Body -> raw -> JSON:
+   ```json
+   {
+     "phone": "13800138000",
+     "password": "Abc12345"
+   }
+   ```
+3. 发送后复制返回的 accessToken
+4. 在其他请求的 Headers 中添加:
+   - Key: Authorization
+   - Value: Bearer <你的 token>
+
+
+### 使用 IDEA HTTP Client
+
+在项目根目录创建 `test.http` 文件:
+
+```http
+### 健康检查
+GET http://localhost:8080/api/health
+
+### 登录
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "phone": "13800138000",
+  "password": "Abc12345"
+}
+
+### 获取用户信息 (需要 token)
+GET http://localhost:8080/api/users/me
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+
+
+## 五、常见问题
+
+### Q1: 401 Unauthorized
+**原因**: token 未携带或过期
+**解决**: 检查 Header 中是否正确添加 `Authorization: Bearer <token>`
+
+### Q2: 403 Forbidden
+**原因**: 权限不足
+**解决**: 确认用户角色是否有权限访问该接口
+
+### Q3: 网络错误/CORS 错误
+**原因**: 跨域限制
+**解决**: 
+1. 检查后端 WebConfig 配置
+2. 开发环境可使用无安全模式浏览器
+3. 生产环境通过 Nginx 反向代理
+
+### Q4: Connection refused
+**原因**: 后端未启动
+**解决**: 确保后端运行在 http://localhost:8080
+
+
+## 六、推荐的开发流程
+
+1. ✅ 启动后端：运行 `start.bat` 或在 IDEA 中运行 Application
+2. ✅ 测试健康检查：浏览器访问 http://localhost:8080/api/health
+3. ✅ 用 Postman 测试登录接口，获取 token
+4. ✅ 在前端项目中实现登录功能
+5. ✅ 实现其他业务功能（血糖记录、饮食管理等）
+6. ✅ 联调测试
+
+
+## 七、环境切换
+
+### 开发环境
+```javascript
+// .env.development
+VUE_APP_BASE_API = 'http://localhost:8080'
+```
+
+### 生产环境
+```javascript
+// .env.production  
+VUE_APP_BASE_API = 'https://api.yourdomain.com'
+```
+
+通过 Nginx 反向代理可避免跨域问题:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://backend-server:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+
+========================================
+  如需更详细的某个框架集成说明，请告知具体技术栈
+========================================
+

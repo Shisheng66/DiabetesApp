@@ -1,0 +1,37 @@
+# Repository-level ignores for the Flutter app repo.
+# The real Flutter project lives in ./new_app.
+
+# IDE
+.vscode/
+/new_app/.vscode/
+
+# Flutter/Dart
+/new_app/.dart_tool/
+/new_app/build/
+/new_app/.flutter-plugins
+/new_app/.flutter-plugins-dependencies
+/new_app/coverage/
+
+# Android generated outputs
+/new_app/android/.gradle/
+/new_app/android/build/
+/new_app/android/app/build/
+/new_app/android/app/debug/
+/new_app/android/app/profile/
+/new_app/android/app/release/
+
+# iOS generated outputs
+/new_app/ios/Flutter/Generated.xcconfig
+/new_app/ios/Flutter/flutter_export_environment.sh
+/new_app/ios/Flutter/.last_build_id
+/new_app/ios/Pods/
+/new_app/ios/.symlinks/
+/new_app/ios/build/
+
+# Local debug artifacts
+/new_app/*.png
+/new_app/*.xml
+/new_app/*.log
+/new_app/*.pid
+/new_app/devtools_options.yaml
+/new_app/flutter_*.err

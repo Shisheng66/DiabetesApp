@@ -1,0 +1,47 @@
+# Debug screenshots and layout dumps
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# XML layout dumps (exclude Android/iOS build XML)
+*.xml
+!new_app/new_app/android/**/*.xml
+!new_app/new_app/ios/**/*.xml
+!new_app/new_app/android/app/src/**/*.xml
+
+# Binary installers
+*.zip
+*.tar.gz
+*.rar
+
+# Backup directories
+_backup_*/
+_remote_repo_inspect/
+artifacts/
+
+# WeChat mini-program configs (not part of this project)
+project.config.json
+project.private.config.json
+
+# IDE
+.idea/
+.vscode/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Loose Dart files at root
+*.dart
+
+# Documentation fragments (consolidated into README.md)
+ANDROID_BUILD_README.md
+BUILD_DOCUMENTATION.md
+DiabetesApp_CodeReview.md
+GITHUB_SUBMIT_STATUS.md
+
+# OS files
+.DS_Store
+Thumbs.db

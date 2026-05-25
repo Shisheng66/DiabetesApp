@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter run:*)",
+      "Bash(flutter analyze *)",
+      "Bash(flutter test *)",
+      "Bash(flutter build *)",
+      "Bash(flutter devices *)",
+      "Bash(adb devices *)",
+      "Bash(adb install *)",
+      "Bash(adb shell *)",
+      "Bash(curl -s http://127.0.0.1:8080/api/health)",
+      "Bash(netstat -ano)",
+      "Bash(adb reverse *)",
+      "Bash(adb logcat *)",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(java -version)",
+      "Bash(mvn --version)",
+      "Bash(mvn test *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/api/health)",
+      "Bash(python stress_test.py --scenario all --concurrency 10 --duration 15)",
+      "Bash(python stress_test.py --scenario health --concurrency 5 --duration 10)",
+      "Bash(python stress_test.py --scenario health --concurrency 2 --duration 5)",
+      "Bash(pip show *)",
+      "Bash(python -c \"import base64; print\\('base64 ok'\\)\")",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git rm *)"
+    ]
+  }
+}

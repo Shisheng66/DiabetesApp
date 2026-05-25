@@ -125,7 +125,7 @@ class LoginWindow(QWidget):
         register_layout.addLayout(sms_row)
 
         self.reg_password = QLineEdit()
-        self.reg_password.setPlaceholderText("密码")
+        self.reg_password.setPlaceholderText("密码（8位以上，含字母和数字）")
         self.reg_password.setEchoMode(QLineEdit.EchoMode.Password)
         register_layout.addWidget(self.reg_password)
 

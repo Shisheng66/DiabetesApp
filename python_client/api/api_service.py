@@ -50,7 +50,7 @@ class ApiService:
         if captcha_code:
             data["captchaCode"] = captcha_code
         if captcha_id:
-            data["captchaId"] = captcha_id
+            data["captchaChallengeId"] = captcha_id
         return self._post("/auth/login", data, auth_required=False)
 
     def register(self, phone: str, password: str, sms_code: str) -> Dict[str, Any]:
@@ -70,7 +70,7 @@ class ApiService:
         if captcha_code:
             data["captchaCode"] = captcha_code
         if captcha_id:
-            data["captchaId"] = captcha_id
+            data["captchaChallengeId"] = captcha_id
         return self._post("/auth/sms/send", data, auth_required=False)
 
     def get_captcha(self) -> Dict[str, Any]:

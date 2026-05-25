@@ -268,7 +268,7 @@ class LoginWindow(QWidget):
                 captcha_code=captcha_code,
                 captcha_id=self.login_captcha_id
             )
-            token = result.get("token")
+            token = result.get("accessToken") or result.get("token")
             if token:
                 self.api.set_token(token)
                 self.on_success()
@@ -299,7 +299,7 @@ class LoginWindow(QWidget):
 
         try:
             result = self.api.register(phone, password, sms_code)
-            token = result.get("token")
+            token = result.get("accessToken") or result.get("token")
             if token:
                 self.api.set_token(token)
                 self.on_success()

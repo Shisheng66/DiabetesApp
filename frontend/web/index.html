@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="糖尿病健康管家：血糖、饮食、运动、报告与社区管理工具。">
+  <meta name="theme-color" content="#0B8A7D">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="糖尿病健康管家">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>糖尿病健康管家</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 18%, rgba(184, 227, 222, .56), transparent 28%),
+        radial-gradient(circle at 84% 12%, rgba(255, 231, 212, .76), transparent 30%),
+        linear-gradient(135deg, #e1f2ee 0%, #f7faf8 52%, #fff0e4 100%);
+    }
+    body::before {
+      content: "糖尿病健康管家";
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      padding: 16px 22px;
+      border-radius: 24px;
+      background: rgba(255,255,255,.58);
+      color: #173836;
+      font: 700 18px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      box-shadow: 0 18px 50px rgba(11, 138, 125, .14);
+    }
+    flutter-view + *::before,
+    body:has(flutter-view)::before {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

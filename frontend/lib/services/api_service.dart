@@ -1,0 +1,545 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+import '../config/api_config.dart';
+import '../config/server_url_prefs.dart';
+import '../utils/display_text.dart';
+
+class ApiService {
+  static String? _token;
+  static String? _resolvedApiBase;
+  static Future<String>? _resolvingApiBaseFuture;
+  static DateTime? _lastSubnetScanAt;
+  static const Duration _subnetScanCooldown = Duration(minutes: 5);
+  static final StreamController<void> _authExpiredController =
+      StreamController<void>.broadcast();
+  static bool _authExpiredNotified = false;
+  static int _consecutiveFailures = 0;
+  static const int _maxFailuresBeforeRescan = 3;
+
+  static Stream<void> get onAuthExpired => _authExpiredController.stream;
+
+  static String? get resolvedApiBase => _resolvedApiBase;
+
+  /// Call after backend/network changes to force rediscovery.
+  static void clearResolvedApiBase() {
+    _resolvedApiBase = null;
+    _resolvingApiBaseFuture = null;
+  }
+
+  static void setToken(String? token) {
+    _token = token;
+    _authExpiredNotified = false;
+  }
+
+  static Map<String, String> get _headers {
+    final map = Map<String, String>.from(_baseHeaders);
+    if (_token != null && _token!.isNotEmpty) {
+      map['Authorization'] = 'Bearer $_token';
+    }
+    return map;
+  }
+
+  static Map<String, String> get _baseHeaders {
+    return const {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json',
+    };
+  }
+
+  static Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+  }) async {
+    var uri = await _buildUri(path);
+    if (query != null && query.isNotEmpty) {
+      uri = uri.replace(queryParameters: query);
+    }
+    Future<http.Response> doRequest() => http.get(uri, headers: _headers);
+    final resp = await _send(doRequest);
+    return _handleResponse(resp);
+  }
+
+  static Future<Map<String, dynamic>> getUnauth(
+    String path, {
+    Map<String, String>? query,
+  }) async {
+    var uri = await _buildUri(path);
+    if (query != null && query.isNotEmpty) {
+      uri = uri.replace(queryParameters: query);
+    }
+    final resp = await _send(() => http.get(uri, headers: _baseHeaders));
+    return _handleResponse(resp, authRequired: false);
+  }
+
+  static Future<BackendHealth> checkHealth({bool forceResolve = false}) async {
+    if (forceResolve) {
+      clearResolvedApiBase();
+    }
+    final base = await _resolveApiBase();
+    final uri = Uri.parse('$base/health');
+    final resp = await _send(
+      () => http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 5)),
+    );
+    if (!_isOurBackendHealthy(resp)) {
+      throw ApiException(resp.statusCode, '服务连接失败，请确认服务已启动');
+    }
+    final body = _tryParseJson(resp.body);
+    return BackendHealth(
+      apiBase: base,
+      status: body is Map ? '${body['status'] ?? 'UP'}' : 'UP',
+      message: '服务连接正常',
+    );
+  }
+
+  static Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final uri = await _buildUri(path);
+    Future<http.Response> doRequest() => http.post(
+      uri,
+      headers: _headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+    final resp = await _send(doRequest);
+    return _handleResponse(resp);
+  }
+
+  static Future<Map<String, dynamic>> postUnauth(
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final uri = await _buildUri(path);
+    final resp = await _send(
+      () => http.post(
+        uri,
+        headers: _baseHeaders,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+    );
+    return _handleResponse(resp, authRequired: false);
+  }
+
+  static Future<Map<String, dynamic>> put(
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final uri = await _buildUri(path);
+    Future<http.Response> doRequest() => http.put(
+      uri,
+      headers: _headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+    final resp = await _send(doRequest);
+    return _handleResponse(resp);
+  }
+
+  static Future<void> delete(String path) async {
+    final uri = await _buildUri(path);
+    final resp = await _send(() => http.delete(uri, headers: _headers));
+    if (resp.statusCode >= 400) {
+      final parsed = _tryParseJson(resp.body);
+      final message = _responseMessage(parsed);
+      throw ApiException(resp.statusCode, message, parsed);
+    }
+  }
+
+  static Future<Uri> _buildUri(String path) async {
+    final apiBase = await _resolveApiBase();
+    return Uri.parse('$apiBase$path');
+  }
+
+  static bool _isOurBackendHealthy(http.Response resp) {
+    if (resp.statusCode == 401 || resp.statusCode == 403) {
+      return true;
+    }
+    if (resp.statusCode < 200 || resp.statusCode >= 300) return false;
+
+    final parsed = _tryParseJson(resp.body);
+    if (parsed == null) return true;
+    if (parsed is! Map) return true;
+
+    final status = parsed['status']?.toString().toUpperCase();
+    return status == null || status == 'UP';
+  }
+
+  static Future<String> _resolveApiBase() async {
+    if (_resolvedApiBase != null) return _resolvedApiBase!;
+    if (_resolvingApiBaseFuture != null) return _resolvingApiBaseFuture!;
+
+    _resolvingApiBaseFuture = _doResolveApiBase();
+    try {
+      final resolved = await _resolvingApiBaseFuture!;
+      _resolvedApiBase = resolved;
+      return resolved;
+    } finally {
+      _resolvingApiBaseFuture = null;
+    }
+  }
+
+  static Future<String> _doResolveApiBase() async {
+    final override = await ServerUrlPrefs.getBaseUrlOverride();
+    final firstRound = _prioritizeCandidates(
+      <String>[
+            if (override != null && override.isNotEmpty) override,
+            ...ApiConfig.baseUrlCandidates,
+          ]
+          .map(_normalizeBase)
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList(growable: false),
+    );
+
+    if (firstRound.isEmpty) {
+      throw ApiException(
+        0,
+        kReleaseMode ? '应用暂未完成服务配置，请稍后重试' : '服务暂时不可用，请稍后重试',
+      );
+    }
+
+    final directFound = await _findHealthyBase(
+      firstRound,
+      timeout: const Duration(seconds: 4),
+    );
+    if (directFound != null) {
+      await _persistResolvedBase(override, directFound);
+      return ApiConfig.apiBaseFor(directFound);
+    }
+
+    // Stale manual override is common after router/IP changes.
+    if (override != null && override.isNotEmpty) {
+      await ServerUrlPrefs.setBaseUrlOverride(null);
+    }
+
+    final now = DateTime.now();
+    final canRescan =
+        !kReleaseMode &&
+        (_lastSubnetScanAt == null ||
+            now.difference(_lastSubnetScanAt!) >= _subnetScanCooldown);
+    if (canRescan) {
+      _lastSubnetScanAt = now;
+      final scanRound = _prioritizeCandidates(
+        _expandSubnetCandidates(firstRound),
+      );
+      final scannedFound = await _findHealthyBase(
+        scanRound,
+        timeout: const Duration(milliseconds: 900),
+      );
+      if (scannedFound != null) {
+        await _persistResolvedBase(override, scannedFound);
+        return ApiConfig.apiBaseFor(scannedFound);
+      }
+    }
+
+    throw ApiException(
+      0,
+      canRescan ? '未能连接服务，请检查网络后重试' : '服务暂时不可用，请稍后重试',
+      null,
+    );
+  }
+
+  static Future<void> _persistResolvedBase(
+    String? oldOverride,
+    String newBase,
+  ) async {
+    if (_isEphemeralDeviceOnlyBase(newBase)) {
+      // Do not persist adb-reverse/emulator loopback addresses.
+      if (oldOverride != null && oldOverride.isNotEmpty) {
+        await ServerUrlPrefs.setBaseUrlOverride(null);
+      }
+      return;
+    }
+    if (oldOverride == newBase) return;
+    await ServerUrlPrefs.setBaseUrlOverride(newBase);
+  }
+
+  static bool _isEphemeralDeviceOnlyBase(String base) {
+    final host = Uri.tryParse(base)?.host ?? '';
+    return host == '127.0.0.1' || host == 'localhost' || host == '10.0.2.2';
+  }
+
+  static Future<String?> _findHealthyBase(
+    List<String> baseUrls, {
+    required Duration timeout,
+  }) async {
+    const batchSize = 8;
+    final unique = baseUrls.toSet().toList(growable: false);
+    for (var i = 0; i < unique.length; i += batchSize) {
+      final batch = unique.skip(i).take(batchSize).toList(growable: false);
+      final results = await Future.wait(
+        batch.map((base) => _probeBase(base, timeout)),
+      );
+      for (final result in results) {
+        if (result.$2) {
+          return result.$1;
+        }
+      }
+    }
+    return null;
+  }
+
+  static List<String> _prioritizeCandidates(List<String> baseUrls) {
+    final loopback = <String>[];
+    final emulator = <String>[];
+    final lan = <String>[];
+    final others = <String>[];
+
+    for (final base in baseUrls) {
+      final host = Uri.tryParse(base)?.host ?? '';
+      if (host == '127.0.0.1' || host == 'localhost') {
+        loopback.add(base);
+      } else if (host == '10.0.2.2') {
+        emulator.add(base);
+      } else if (_looksLikeIpv4(host)) {
+        lan.add(base);
+      } else {
+        others.add(base);
+      }
+    }
+
+    return {
+      ...loopback,
+      ...emulator,
+      ...others,
+      ...lan,
+    }.toList(growable: false);
+  }
+
+  static Future<(String, bool)> _probeBase(
+    String base,
+    Duration timeout,
+  ) async {
+    final normalized = _normalizeBase(base);
+    final probes = <Uri>[];
+    for (final raw in <String>[
+      '${ApiConfig.apiBaseFor(normalized)}/health',
+      '$normalized/api/health',
+      '$normalized/health',
+    ]) {
+      final uri = Uri.tryParse(raw);
+      if (uri != null) {
+        probes.add(uri);
+      }
+    }
+
+    for (final uri in probes) {
+      try {
+        final resp = await http
+            .get(uri, headers: const {'Accept': 'application/json'})
+            .timeout(timeout);
+        if (_isOurBackendHealthy(resp)) {
+          return (normalized, true);
+        }
+      } on SocketException {
+        // Try next probe.
+      } on TimeoutException {
+        // Try next probe.
+      } on HttpException {
+        // Try next probe.
+      } on http.ClientException {
+        // Try next probe.
+      } catch (_) {
+        // Try next probe.
+      }
+    }
+    return (normalized, false);
+  }
+
+  static List<String> _expandSubnetCandidates(List<String> seedBases) {
+    final result = <String>{};
+    final prefixes = <String>{};
+
+    for (final base in seedBases) {
+      final host = Uri.tryParse(base)?.host ?? '';
+      final parts = host.split('.');
+      if (parts.length == 4 && parts.every((e) => int.tryParse(e) != null)) {
+        final a = int.parse(parts[0]);
+        final b = int.parse(parts[1]);
+        final c = int.parse(parts[2]);
+        if (_isPrivateIpv4(a, b)) {
+          prefixes.add('$a.$b.$c');
+        }
+      }
+    }
+
+    prefixes.addAll(const [
+      '192.168.17',
+      '192.168.190',
+      '192.168.1',
+      '192.168.0',
+      '10.0.2',
+    ]);
+
+    const suffixes = <int>[
+      2,
+      8,
+      10,
+      11,
+      12,
+      20,
+      30,
+      50,
+      100,
+      101,
+      102,
+      103,
+      108,
+      109,
+      110,
+      120,
+      130,
+      138,
+      150,
+      186,
+      200,
+      201,
+    ];
+
+    for (final prefix in prefixes) {
+      for (final s in suffixes) {
+        result.add('http://$prefix.$s:8080');
+      }
+    }
+
+    return result.toList(growable: false);
+  }
+
+  static bool _isPrivateIpv4(int a, int b) {
+    return a == 10 ||
+        (a == 172 && b >= 16 && b <= 31) ||
+        (a == 192 && b == 168);
+  }
+
+  static bool _looksLikeIpv4(String host) {
+    final parts = host.split('.');
+    return parts.length == 4 && parts.every((e) => int.tryParse(e) != null);
+  }
+
+  static String _normalizeBase(String input) {
+    final raw = input.trim();
+    if (raw.isEmpty) return raw;
+
+    var withScheme = raw.startsWith('http://') || raw.startsWith('https://')
+        ? raw
+        : 'http://$raw';
+
+    // In release mode, reject HTTP URLs to prevent token/data exposure.
+    if (kReleaseMode && withScheme.startsWith('http://')) {
+      throw ApiException(0, '生产环境不允许 HTTP 连接，请使用 HTTPS');
+    }
+
+    withScheme = withScheme.replaceAll(RegExp(r'/+$'), '');
+
+    // Accept values like http://x.x.x.x:8080/api from older manual settings.
+    if (withScheme.toLowerCase().endsWith('/api')) {
+      withScheme = withScheme.substring(0, withScheme.length - 4);
+    }
+    return withScheme.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static dynamic _tryParseJson(String body) {
+    if (body.isEmpty) return null;
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<http.Response> _send(
+    Future<http.Response> Function() request,
+  ) async {
+    try {
+      final resp = await request().timeout(const Duration(seconds: 10));
+      _consecutiveFailures = 0;
+      return resp;
+    } on SocketException {
+      _onNetworkFailure();
+      throw ApiException(0, '网络异常，请确认服务已启动且手机与电脑在同一网络。');
+    } on TimeoutException {
+      _onNetworkFailure();
+      throw ApiException(0, '请求超时，请稍后重试。');
+    } on HttpException {
+      _onNetworkFailure();
+      throw ApiException(0, 'HTTP 连接异常，请稍后重试。');
+    } on http.ClientException {
+      _onNetworkFailure();
+      throw ApiException(0, '客户端网络异常，请稍后重试。');
+    }
+  }
+
+  static void _onNetworkFailure() {
+    _consecutiveFailures++;
+    if (_consecutiveFailures >= _maxFailuresBeforeRescan) {
+      _resolvedApiBase = null;
+      _consecutiveFailures = 0;
+    }
+  }
+
+  static Future<Map<String, dynamic>> _handleResponse(
+    http.Response resp, {
+    bool authRequired = true,
+  }) async {
+    final body = _tryParseJson(resp.body);
+
+    if (resp.statusCode == 401 && authRequired) {
+      _token = null;
+      if (!_authExpiredNotified) {
+        _authExpiredNotified = true;
+        _authExpiredController.add(null);
+      }
+      throw ApiException(401, '登录已过期，请重新登录', body);
+    }
+
+    if (resp.statusCode >= 400) {
+      final msg = _responseMessage(body);
+      throw ApiException(resp.statusCode, msg, body);
+    }
+
+    if (body == null) return {};
+    return body is Map<String, dynamic> ? body : {'data': body};
+  }
+}
+
+String _responseMessage(dynamic body) {
+  if (body is Map) {
+    final message = body['message'];
+    if (message != null && message.toString().trim().isNotEmpty) {
+      return message.toString();
+    }
+  }
+  return '请求失败，请稍后重试';
+}
+
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+  final String diagnosticMessage;
+  final dynamic body;
+
+  ApiException(this.statusCode, String message, [this.body])
+    : diagnosticMessage = message,
+      message = DisplayText.userError(message);
+
+  @override
+  String toString() => message;
+}
+
+class BackendHealth {
+  const BackendHealth({
+    required this.apiBase,
+    required this.status,
+    required this.message,
+  });
+
+  final String apiBase;
+  final String status;
+  final String message;
+}

@@ -17,8 +17,8 @@ class LoginWindow(QWidget):
         self.api = api
         self.on_success = on_success
         self.is_login_mode = True
-        self.captcha_id = None
-        self.captcha_code = None
+        self.login_captcha_id = None
+        self.reg_captcha_id = None
 
         self.setWindowTitle("糖尿病健康管家 - 登录")
         self.setFixedSize(400, 580)

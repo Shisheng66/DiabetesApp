@@ -1,10 +1,11 @@
 """登录窗口"""
+import base64
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QMessageBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import Qt, Signal, QByteArray, QBuffer, QIODevice
+from PySide6.QtGui import QFont, QIcon, QPixmap
 from api.api_service import ApiException
 
 
@@ -16,16 +17,18 @@ class LoginWindow(QWidget):
         self.api = api
         self.on_success = on_success
         self.is_login_mode = True
+        self.captcha_id = None
+        self.captcha_code = None
 
         self.setWindowTitle("糖尿病健康管家 - 登录")
-        self.setFixedSize(400, 500)
+        self.setFixedSize(400, 580)
         self._setup_ui()
 
     def _setup_ui(self):
         """设置界面"""
         layout = QVBoxLayout(self)
-        layout.setSpacing(20)
-        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(15)
+        layout.setContentsMargins(40, 30, 40, 30)
 
         # Logo/标题
         title = QLabel("糖尿病健康管家")
@@ -39,7 +42,7 @@ class LoginWindow(QWidget):
         subtitle.setStyleSheet("color: #666; font-size: 14px;")
         layout.addWidget(subtitle)
 
-        layout.addSpacing(30)
+        layout.addSpacing(20)
 
         # 堆叠窗口用于切换登录/注册
         self.stack = QStackedWidget()
@@ -47,7 +50,7 @@ class LoginWindow(QWidget):
         # 登录页面
         login_page = QWidget()
         login_layout = QVBoxLayout(login_page)
-        login_layout.setSpacing(15)
+        login_layout.setSpacing(12)
 
         self.login_phone = QLineEdit()
         self.login_phone.setPlaceholderText("手机号")
@@ -58,6 +61,24 @@ class LoginWindow(QWidget):
         self.login_password.setEchoMode(QLineEdit.EchoMode.Password)
         login_layout.addWidget(self.login_password)
 
+        # 登录图形验证码
+        captcha_row = QHBoxLayout()
+        self.login_captcha_input = QLineEdit()
+        self.login_captcha_input.setPlaceholderText("图形验证码")
+        captcha_row.addWidget(self.login_captcha_input)
+
+        self.login_captcha_label = QLabel()
+        self.login_captcha_label.setFixedSize(100, 36)
+        self.login_captcha_label.setStyleSheet("border: 1px solid #ccc; background: white;")
+        self.login_captcha_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_captcha_label.mousePressEvent = lambda e: self._refresh_login_captcha()
+        captcha_row.addWidget(self.login_captcha_label)
+        login_layout.addLayout(captcha_row)
+
+        self.login_captcha_hint = QLabel()
+        self.login_captcha_hint.setStyleSheet("color: #999; font-size: 11px;")
+        login_layout.addWidget(self.login_captcha_hint)
+
         self.login_btn = QPushButton("登录")
         self.login_btn.clicked.connect(self._do_login)
         login_layout.addWidget(self.login_btn)
@@ -67,15 +88,34 @@ class LoginWindow(QWidget):
         # 注册页面
         register_page = QWidget()
         register_layout = QVBoxLayout(register_page)
-        register_layout.setSpacing(15)
+        register_layout.setSpacing(12)
 
         self.reg_phone = QLineEdit()
         self.reg_phone.setPlaceholderText("手机号")
         register_layout.addWidget(self.reg_phone)
 
+        # 注册图形验证码
+        captcha_row2 = QHBoxLayout()
+        self.reg_captcha_input = QLineEdit()
+        self.reg_captcha_input.setPlaceholderText("图形验证码")
+        captcha_row2.addWidget(self.reg_captcha_input)
+
+        self.reg_captcha_label = QLabel()
+        self.reg_captcha_label.setFixedSize(100, 36)
+        self.reg_captcha_label.setStyleSheet("border: 1px solid #ccc; background: white;")
+        self.reg_captcha_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reg_captcha_label.mousePressEvent = lambda e: self._refresh_reg_captcha()
+        captcha_row2.addWidget(self.reg_captcha_label)
+        register_layout.addLayout(captcha_row2)
+
+        self.reg_captcha_hint = QLabel()
+        self.reg_captcha_hint.setStyleSheet("color: #999; font-size: 11px;")
+        register_layout.addWidget(self.reg_captcha_hint)
+
+        # 短信验证码
         sms_row = QHBoxLayout()
         self.reg_sms_code = QLineEdit()
-        self.reg_sms_code.setPlaceholderText("验证码")
+        self.reg_sms_code.setPlaceholderText("短信验证码")
         sms_row.addWidget(self.reg_sms_code)
 
         self.sms_btn = QPushButton("发送验证码")
@@ -138,6 +178,8 @@ class LoginWindow(QWidget):
         """窗口显示时检查服务状态"""
         super().showEvent(event)
         self._check_health()
+        self._refresh_login_captcha()
+        self._refresh_reg_captcha()
 
     def _check_health(self):
         """检查后端服务状态"""
@@ -147,6 +189,50 @@ class LoginWindow(QWidget):
         else:
             self.status_label.setText("无法连接到服务，请确认服务已启动")
             self.status_label.setStyleSheet("color: #f44336; font-size: 12px;")
+
+    def _refresh_login_captcha(self):
+        """刷新登录图形验证码"""
+        try:
+            result = self.api.get_captcha()
+            self.login_captcha_id = result.get("challengeId")
+            self._display_captcha(result, self.login_captcha_label)
+            # 显示调试验证码（开发环境）
+            display_code = result.get("displayCode")
+            if display_code:
+                self.login_captcha_hint.setText(f"调试验证码: {display_code}")
+            else:
+                self.login_captcha_hint.setText("")
+        except Exception as e:
+            self.login_captcha_hint.setText(f"获取验证码失败: {str(e)}")
+
+    def _refresh_reg_captcha(self):
+        """刷新注册图形验证码"""
+        try:
+            result = self.api.get_captcha()
+            self.reg_captcha_id = result.get("challengeId")
+            self._display_captcha(result, self.reg_captcha_label)
+            # 显示调试验证码（开发环境）
+            display_code = result.get("displayCode")
+            if display_code:
+                self.reg_captcha_hint.setText(f"调试验证码: {display_code}")
+            else:
+                self.reg_captcha_hint.setText("")
+        except Exception as e:
+            self.reg_captcha_hint.setText(f"获取验证码失败: {str(e)}")
+
+    def _display_captcha(self, captcha_data, label):
+        """显示图形验证码图片"""
+        image_data_uri = captcha_data.get("imageDataUri", "")
+        if image_data_uri.startswith("data:image/png;base64,"):
+            base64_data = image_data_uri.split(",", 1)[1]
+            image_bytes = base64.b64decode(base64_data)
+            pixmap = QPixmap()
+            pixmap.loadFromData(image_bytes)
+            label.setPixmap(pixmap.scaled(
+                label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            ))
 
     def _toggle_mode(self):
         """切换登录/注册模式"""
@@ -166,13 +252,22 @@ class LoginWindow(QWidget):
         """执行登录"""
         phone = self.login_phone.text().strip()
         password = self.login_password.text().strip()
+        captcha_code = self.login_captcha_input.text().strip()
 
         if not phone or not password:
             QMessageBox.warning(self, "提示", "请输入手机号和密码")
             return
 
+        if not captcha_code:
+            QMessageBox.warning(self, "提示", "请输入图形验证码")
+            return
+
         try:
-            result = self.api.login(phone, password)
+            result = self.api.login(
+                phone, password,
+                captcha_code=captcha_code,
+                captcha_id=self.login_captcha_id
+            )
             token = result.get("token")
             if token:
                 self.api.set_token(token)
@@ -181,6 +276,7 @@ class LoginWindow(QWidget):
                 QMessageBox.warning(self, "登录失败", "未获取到令牌")
         except ApiException as e:
             QMessageBox.warning(self, "登录失败", e.message)
+            self._refresh_login_captcha()
 
     def _do_register(self):
         """执行注册"""
@@ -216,14 +312,31 @@ class LoginWindow(QWidget):
     def _send_sms(self):
         """发送短信验证码"""
         phone = self.reg_phone.text().strip()
+        captcha_code = self.reg_captcha_input.text().strip()
+
         if not phone:
             QMessageBox.warning(self, "提示", "请输入手机号")
             return
 
+        if not captcha_code:
+            QMessageBox.warning(self, "提示", "请输入图形验证码")
+            return
+
         try:
-            self.api.send_sms_code(phone)
-            QMessageBox.information(self, "提示", "验证码已发送")
+            result = self.api.send_sms_code(
+                phone,
+                captcha_code=captcha_code,
+                captcha_id=self.reg_captcha_id
+            )
+            # 显示调试验证码（开发环境）
+            debug_code = result.get("debugCode")
+            if debug_code:
+                QMessageBox.information(self, "验证码", f"短信验证码: {debug_code}")
+            else:
+                QMessageBox.information(self, "提示", "验证码已发送")
+
             self.sms_btn.setEnabled(False)
             self.sms_btn.setText("已发送")
         except ApiException as e:
             QMessageBox.warning(self, "发送失败", e.message)
+            self._refresh_reg_captcha()

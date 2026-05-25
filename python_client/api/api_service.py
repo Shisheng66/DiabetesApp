@@ -61,9 +61,17 @@ class ApiService:
             "smsCode": sms_code,
         }, auth_required=False)
 
-    def send_sms_code(self, phone: str) -> Dict[str, Any]:
+    def send_sms_code(self, phone: str, captcha_code: str = "", captcha_id: str = "") -> Dict[str, Any]:
         """发送短信验证码"""
-        return self._post("/auth/sms/send", {"phone": phone}, auth_required=False)
+        data = {
+            "phone": phone,
+            "scene": "REGISTER"
+        }
+        if captcha_code:
+            data["captchaCode"] = captcha_code
+        if captcha_id:
+            data["captchaId"] = captcha_id
+        return self._post("/auth/sms/send", data, auth_required=False)
 
     def get_captcha(self) -> Dict[str, Any]:
         """获取图形验证码"""

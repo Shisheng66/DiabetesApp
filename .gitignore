@@ -6,6 +6,7 @@
 
 # XML layout dumps (exclude Android/iOS build XML)
 *.xml
+!.run/*.run.xml
 !new_app/new_app/android/**/*.xml
 !new_app/new_app/ios/**/*.xml
 !new_app/new_app/android/app/src/**/*.xml

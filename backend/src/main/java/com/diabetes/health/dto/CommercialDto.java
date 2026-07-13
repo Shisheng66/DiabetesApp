@@ -85,7 +85,7 @@ public class CommercialDto {
             });
             r.setCreatedAt(order.getCreatedAt());
             r.setPaidAt(order.getPaidAt());
-            r.setPayHint("演示环境已创建订单，接入微信/支付宝后可跳转真实支付。开发调试可使用模拟支付按钮。");
+            r.setPayHint("订单已创建，待真实支付平台完成服务端验签后开通会员。");
             return r;
         }
     }

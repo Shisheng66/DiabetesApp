@@ -34,6 +34,10 @@ public class HttpSmsSender implements SmsSender {
         }
 
         try {
+            URI endpoint = URI.create(smsProperties.getEndpoint());
+            if (!"https".equalsIgnoreCase(endpoint.getScheme()) || endpoint.getHost() == null) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "短信服务地址必须使用 HTTPS");
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("phone", phone);
             payload.put("code", code);
@@ -42,7 +46,7 @@ public class HttpSmsSender implements SmsSender {
             payload.put("templateId", smsProperties.getTemplateId());
 
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(smsProperties.getEndpoint()))
+                    .uri(endpoint)
                     .timeout(Duration.ofSeconds(Math.max(1, smsProperties.getRequestTimeoutSeconds())))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)));

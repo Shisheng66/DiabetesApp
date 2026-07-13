@@ -3,11 +3,11 @@ name: Frontend CI
 on:
   push:
     paths:
-      - "frontend/**"
+      - "new_app/new_app/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
-      - "frontend/**"
+      - "new_app/new_app/**"
       - ".github/workflows/frontend-ci.yml"
   workflow_dispatch:
 
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: new_app/new_app
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2

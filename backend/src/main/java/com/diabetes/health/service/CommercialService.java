@@ -1,6 +1,7 @@
 package com.diabetes.health.service;
 
 import com.diabetes.health.dto.CommercialDto;
+import com.diabetes.health.dto.PaymentDto;
 import com.diabetes.health.entity.PaymentOrder;
 import com.diabetes.health.entity.UserSubscription;
 import com.diabetes.health.repository.PaymentOrderRepository;
@@ -150,6 +151,48 @@ public class CommercialService {
 
         UserSubscription subscription = UserSubscription.builder()
                 .userId(user.getId())
+                .planCode(plan.code())
+                .status(UserSubscription.SubscriptionStatus.ACTIVE)
+                .startedAt(now)
+                .expiresAt(startAt.plus(Duration.ofDays(plan.durationDays())))
+                .sourceOrderNo(order.getOrderNo())
+                .build();
+        return toSubscriptionResponse(subscriptionRepository.save(subscription), plan);
+    }
+
+    /** Processes a signature-verified payment callback. It is not exposed to clients. */
+    @Transactional
+    public CommercialDto.SubscriptionResponse confirmPaidOrder(PaymentDto.CallbackRequest request) {
+        PaymentOrder order = orderRepository.findByOrderNoForUpdate(request.getOrderNo())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "订单不存在"));
+        if (!Objects.equals(order.getAmountCents(), request.getAmountCents())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "支付金额校验失败");
+        }
+        PlanDef plan = planOrThrow(order.getPlanCode());
+        Optional<UserSubscription> existing = subscriptionRepository.findBySourceOrderNo(order.getOrderNo());
+        if (existing.isPresent()) {
+            return toSubscriptionResponse(existing.get(), plan);
+        }
+        if (order.getStatus() == PaymentOrder.OrderStatus.CLOSED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "订单已关闭");
+        }
+
+        Instant now = Instant.now();
+        order.setStatus(PaymentOrder.OrderStatus.PAID);
+        if (order.getPaidAt() == null) {
+            order.setPaidAt(now);
+        }
+        orderRepository.save(order);
+
+        Instant startAt = subscriptionRepository
+                .findFirstByUserIdAndStatusAndExpiresAtAfterOrderByExpiresAtDesc(
+                        order.getUserId(), UserSubscription.SubscriptionStatus.ACTIVE, now
+                )
+                .map(UserSubscription::getExpiresAt)
+                .filter(expiresAt -> expiresAt.isAfter(now))
+                .orElse(now);
+        UserSubscription subscription = UserSubscription.builder()
+                .userId(order.getUserId())
                 .planCode(plan.code())
                 .status(UserSubscription.SubscriptionStatus.ACTIVE)
                 .startedAt(now)

@@ -46,6 +46,9 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     @Value("${spring.profiles.active:}")
     private String activeProfiles;
 
+    @Value("${app.security.trusted-proxy-addresses:127.0.0.1,::1}")
+    private String trustedProxyAddresses;
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
@@ -159,11 +162,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         if (remoteAddr == null || remoteAddr.isBlank()) {
             return false;
         }
-        return "127.0.0.1".equals(remoteAddr)
-                || "0:0:0:0:0:0:0:1".equals(remoteAddr)
-                || "::1".equals(remoteAddr)
-                || remoteAddr.startsWith("10.")
-                || remoteAddr.startsWith("192.168.")
-                || remoteAddr.matches("^172\\.(1[6-9]|2\\d|3[0-1])\\..*");
+        return Arrays.stream(trustedProxyAddresses.split(","))
+                .map(String::trim)
+                .anyMatch(remoteAddr::equals);
     }
 }

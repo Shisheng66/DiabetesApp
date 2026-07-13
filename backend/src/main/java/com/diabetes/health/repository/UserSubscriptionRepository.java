@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface UserSubscriptionRepository extends JpaRepository<UserSubscription, Long> {
+
+    Optional<UserSubscription> findBySourceOrderNo(String sourceOrderNo);
     Optional<UserSubscription> findFirstByUserIdAndStatusAndExpiresAtAfterOrderByExpiresAtDesc(
             Long userId,
             UserSubscription.SubscriptionStatus status,

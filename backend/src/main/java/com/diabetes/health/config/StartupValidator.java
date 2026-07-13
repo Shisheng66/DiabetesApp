@@ -19,11 +19,14 @@ public class StartupValidator {
 
     private static final String UNSAFE_DEFAULT_JWT_SECRET =
             "dev-only-secret-please-change-in-prod-32chars";
+    private static final String EXAMPLE_JWT_SECRET =
+            "change-this-to-a-real-32-char-secret";
 
     private final JwtProperties jwtProperties;
     private final AppProperties appProperties;
     private final AuthVerificationProperties authVerificationProperties;
     private final SmsProperties smsProperties;
+    private final PaymentProperties paymentProperties;
     private final StringRedisTemplate redisTemplate;
     private final Environment environment;
 
@@ -54,7 +57,8 @@ public class StartupValidator {
             );
         }
 
-        if (UNSAFE_DEFAULT_JWT_SECRET.equals(jwtProperties.getSecret())) {
+        if (UNSAFE_DEFAULT_JWT_SECRET.equals(jwtProperties.getSecret())
+                || EXAMPLE_JWT_SECRET.equals(jwtProperties.getSecret())) {
             throw new IllegalStateException("JWT secret 使用了默认不安全值，请通过环境变量 JWT_SECRET 设置");
         }
         
@@ -111,12 +115,18 @@ public class StartupValidator {
         if (smsProperties.getEndpoint() == null || smsProperties.getEndpoint().isBlank()) {
             throw new IllegalStateException("生产环境必须配置 APP_SMS_ENDPOINT");
         }
+        if (!smsProperties.getEndpoint().toLowerCase(java.util.Locale.ROOT).startsWith("https://")) {
+            throw new IllegalStateException("生产环境短信 APP_SMS_ENDPOINT 必须使用 HTTPS");
+        }
         if (smsProperties.getToken() == null || smsProperties.getToken().isBlank()) {
             throw new IllegalStateException("生产环境必须配置 APP_SMS_TOKEN");
         }
         if (smsProperties.getEndpoint().contains("example.com")
                 || "replace-with-provider-token".equalsIgnoreCase(smsProperties.getToken())) {
             throw new IllegalStateException("生产环境短信配置仍是占位值，请替换为真实短信平台 APP_SMS_ENDPOINT / APP_SMS_TOKEN");
+        }
+        if (paymentProperties.getCallbackSecret() == null || paymentProperties.getCallbackSecret().length() < 32) {
+            throw new IllegalStateException("生产环境必须配置至少 32 位的 APP_PAYMENT_CALLBACK_SECRET");
         }
 
         log.debug("✓ 生产外部依赖验证通过");

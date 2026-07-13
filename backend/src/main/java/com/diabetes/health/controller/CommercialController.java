@@ -55,10 +55,4 @@ public class CommercialController {
         return commercialService.myOrders(user, page, size);
     }
 
-    @PostMapping("/orders/{orderNo}/mock-pay")
-    public CommercialDto.SubscriptionResponse mockPay(
-            @AuthenticationPrincipal CurrentUser user,
-            @PathVariable String orderNo) {
-        return commercialService.mockPay(user, orderNo);
-    }
 }

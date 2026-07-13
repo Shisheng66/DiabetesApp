@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -66,7 +69,7 @@ public class TokenBlacklistService {
 
     private boolean writeToRedis(String token, Duration ttl) {
         try {
-            redisTemplate.opsForValue().set(KEY_PREFIX + token, "1", ttl);
+            redisTemplate.opsForValue().set(KEY_PREFIX + tokenFingerprint(token), "1", ttl);
             return true;
         } catch (DataAccessException ex) {
             failIfProdRedisUnavailable(ex);
@@ -77,7 +80,7 @@ public class TokenBlacklistService {
 
     private Boolean readFromRedis(String token) {
         try {
-            return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + token));
+            return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + tokenFingerprint(token)));
         } catch (DataAccessException ex) {
             failIfProdRedisUnavailable(ex);
             logFallbackOnce(ex);
@@ -106,5 +109,15 @@ public class TokenBlacklistService {
         return activeProfiles != null && java.util.Arrays.stream(activeProfiles.split(","))
                 .map(String::trim)
                 .anyMatch("prod"::equalsIgnoreCase);
+    }
+
+    private String tokenFingerprint(String token) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is required for token storage", ex);
+        }
     }
 }

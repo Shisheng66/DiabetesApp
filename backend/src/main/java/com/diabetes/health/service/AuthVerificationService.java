@@ -46,6 +46,8 @@ public class AuthVerificationService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String CAPTCHA_KEY_PREFIX = "auth:captcha:";
     private static final String SMS_KEY_PREFIX = "auth:sms:";
+    private static final int MAX_CAPTCHA_ATTEMPTS = 5;
+    private static final int MAX_SMS_ATTEMPTS = 5;
 
     private final AuthVerificationProperties properties;
     private final UserAccountRepository userAccountRepository;
@@ -134,8 +136,22 @@ public class AuthVerificationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "图形验证码已过期，请刷新后重试");
         }
 
+        if (challenge.attemptCount() >= MAX_CAPTCHA_ATTEMPTS) {
+            deleteCaptchaChallenge(challengeId);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "图形验证码尝试次数过多，请刷新后重试");
+        }
+
         String actualHash = hash(normalizeCode(captchaCode), challenge.salt());
-        if (!challenge.codeHash().equals(actualHash)) {
+        if (!MessageDigest.isEqual(
+                challenge.codeHash().getBytes(StandardCharsets.UTF_8),
+                actualHash.getBytes(StandardCharsets.UTF_8)
+        )) {
+            challenge.setAttemptCount(challenge.attemptCount() + 1);
+            if (challenge.attemptCount() >= MAX_CAPTCHA_ATTEMPTS) {
+                deleteCaptchaChallenge(challengeId);
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "图形验证码尝试次数过多，请刷新后重试");
+            }
+            saveCaptchaChallenge(challengeId, challenge);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "图形验证码错误");
         }
 
@@ -159,9 +175,22 @@ public class AuthVerificationService {
         if (challenge.used()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "短信验证码已使用，请重新获取");
         }
+        if (challenge.attemptCount() >= MAX_SMS_ATTEMPTS) {
+            deleteSmsChallenge(key);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "短信验证码尝试次数过多，请重新获取");
+        }
 
         String actualHash = hash(smsCode.trim(), challenge.salt());
-        if (!challenge.codeHash().equals(actualHash)) {
+        if (!MessageDigest.isEqual(
+                challenge.codeHash().getBytes(StandardCharsets.UTF_8),
+                actualHash.getBytes(StandardCharsets.UTF_8)
+        )) {
+            challenge.setAttemptCount(challenge.attemptCount() + 1);
+            if (challenge.attemptCount() >= MAX_SMS_ATTEMPTS) {
+                deleteSmsChallenge(key);
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "短信验证码尝试次数过多，请重新获取");
+            }
+            saveSmsChallenge(key, challenge);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "短信验证码错误");
         }
 
@@ -372,6 +401,7 @@ public class AuthVerificationService {
         private String codeHash;
         private String salt;
         private Instant expiresAt;
+        private int attemptCount;
 
         public CaptchaChallenge() {
         }
@@ -417,6 +447,18 @@ public class AuthVerificationService {
         public void setExpiresAt(Instant expiresAt) {
             this.expiresAt = expiresAt;
         }
+
+        public int attemptCount() {
+            return attemptCount;
+        }
+
+        public int getAttemptCount() {
+            return attemptCount;
+        }
+
+        public void setAttemptCount(int attemptCount) {
+            this.attemptCount = attemptCount;
+        }
     }
 
     public static class SmsChallenge {
@@ -426,6 +468,7 @@ public class AuthVerificationService {
         private Instant expiresAt;
         private Instant cooldownUntil;
         private boolean used;
+        private int attemptCount;
 
         public SmsChallenge() {
         }
@@ -496,6 +539,18 @@ public class AuthVerificationService {
 
         public void setUsed(boolean used) {
             this.used = used;
+        }
+
+        public int attemptCount() {
+            return attemptCount;
+        }
+
+        public int getAttemptCount() {
+            return attemptCount;
+        }
+
+        public void setAttemptCount(int attemptCount) {
+            this.attemptCount = attemptCount;
         }
     }
 }

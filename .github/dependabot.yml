@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "pub"
-    directory: "/frontend"
+    directory: "/new_app/new_app"
     schedule:
       interval: "weekly"
   - package-ecosystem: "github-actions"

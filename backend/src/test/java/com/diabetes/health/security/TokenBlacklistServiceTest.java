@@ -3,6 +3,7 @@ package com.diabetes.health.security;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -23,14 +24,16 @@ class TokenBlacklistServiceTest {
 
     @Test
     void isRevoked_shouldReturnFalseForNonRevokedToken() {
-        when(redisTemplate.hasKey("jwt:blacklist:token123")).thenReturn(false);
+        when(redisTemplate.hasKey(anyString())).thenReturn(false);
         assertThat(tokenBlacklistService.isRevoked("token123")).isFalse();
+        assertUsesFingerprintInsteadOfRawToken();
     }
 
     @Test
     void isRevoked_shouldReturnTrueForRevokedToken() {
-        when(redisTemplate.hasKey("jwt:blacklist:token123")).thenReturn(true);
+        when(redisTemplate.hasKey(anyString())).thenReturn(true);
         assertThat(tokenBlacklistService.isRevoked("token123")).isTrue();
+        assertUsesFingerprintInsteadOfRawToken();
     }
 
     @Test
@@ -39,12 +42,20 @@ class TokenBlacklistServiceTest {
         doThrow(new org.springframework.data.redis.RedisConnectionFailureException("fail"))
             .when(valueOps).set(anyString(), anyString(), any(Duration.class));
         doThrow(new org.springframework.data.redis.RedisConnectionFailureException("fail"))
-            .when(redisTemplate).hasKey("jwt:blacklist:token123");
+            .when(redisTemplate).hasKey(anyString());
 
         // Should not throw
         tokenBlacklistService.revoke("token123", java.time.Instant.now().plusSeconds(3600));
 
         // Should be in fallback map
         assertThat(tokenBlacklistService.isRevoked("token123")).isTrue();
+    }
+
+    private void assertUsesFingerprintInsteadOfRawToken() {
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisTemplate).hasKey(keyCaptor.capture());
+        assertThat(keyCaptor.getValue())
+                .startsWith("jwt:blacklist:")
+                .doesNotContain("token123");
     }
 }

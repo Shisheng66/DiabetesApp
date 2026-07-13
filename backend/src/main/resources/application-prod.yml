@@ -68,3 +68,5 @@ app:
     token: ${APP_SMS_TOKEN}
     signature: ${APP_SMS_SIGNATURE:}
     template-id: ${APP_SMS_TEMPLATE_ID:}
+  payment:
+    callback-secret: ${APP_PAYMENT_CALLBACK_SECRET}

@@ -37,6 +37,6 @@ app:
     expiration-seconds: 604800
   auth:
     captcha-expire-seconds: 180
-    sms-expire-seconds: 300
+    sms-expire-seconds: 600
     sms-cooldown-seconds: 60
     expose-debug-sms-code: false

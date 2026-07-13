@@ -33,6 +33,10 @@ project.private.config.json
 .env.*
 !.env.example
 
+# Local backend launch logs
+backend/*_backend.out.log
+backend/*_backend.err.log
+
 # Loose Dart files at root
 *.dart
 
